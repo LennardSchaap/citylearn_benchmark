@@ -1,0 +1,13 @@
+cost_function,value,name,level,mode,episode,simulation_id
+1 - load_factor,0.9780965027804251,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+average_daily_peak,1.2930133028530404,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+carbon_emissions,,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+cost,,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+electricity_consumption,1.3929663111724695,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+peak_demand,1.0234613623057949,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+ramping,2.0028776914119764,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+zero_net_energy,0.26650863026540783,District,district,train,0,alameda_resstock-amy2018-2021-release-1-111763
+electricity_consumption,1.3929663111724695,resstock-amy2018-2021-release-1-111763,building,train,0,alameda_resstock-amy2018-2021-release-1-111763
+zero_net_energy,0.26650863026540783,resstock-amy2018-2021-release-1-111763,building,train,0,alameda_resstock-amy2018-2021-release-1-111763
+carbon_emissions,,resstock-amy2018-2021-release-1-111763,building,train,0,alameda_resstock-amy2018-2021-release-1-111763
+cost,,resstock-amy2018-2021-release-1-111763,building,train,0,alameda_resstock-amy2018-2021-release-1-111763

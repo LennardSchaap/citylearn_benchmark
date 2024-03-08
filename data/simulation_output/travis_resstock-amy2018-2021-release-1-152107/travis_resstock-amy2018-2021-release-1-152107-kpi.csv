@@ -1,0 +1,13 @@
+cost_function,value,name,level,mode,episode,simulation_id
+1 - load_factor,0.9914481033855428,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+average_daily_peak,1.1752118999820154,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+carbon_emissions,,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+cost,,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+electricity_consumption,1.1636353309730265,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+peak_demand,1.1095801939037457,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+ramping,1.8221897786410493,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+zero_net_energy,1.2191072239856566,District,district,train,0,travis_resstock-amy2018-2021-release-1-152107
+electricity_consumption,1.1636353309730265,resstock-amy2018-2021-release-1-152107,building,train,0,travis_resstock-amy2018-2021-release-1-152107
+zero_net_energy,1.2191072239856566,resstock-amy2018-2021-release-1-152107,building,train,0,travis_resstock-amy2018-2021-release-1-152107
+carbon_emissions,,resstock-amy2018-2021-release-1-152107,building,train,0,travis_resstock-amy2018-2021-release-1-152107
+cost,,resstock-amy2018-2021-release-1-152107,building,train,0,travis_resstock-amy2018-2021-release-1-152107
