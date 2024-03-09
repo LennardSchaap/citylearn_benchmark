@@ -76,7 +76,7 @@ def set_schema(**kwargs):
     schema['root_directory'] = None
     schema['central_agent'] = settings['central_agent']
     schema['simulation_start_time_step'] = 0
-    schema['simulation_end_time_step'] = 8760
+    schema['simulation_end_time_step'] = 8759
     schema['episodes'] = settings['episodes']
     time_steps = schema['simulation_end_time_step'] - schema['simulation_start_time_step']
 

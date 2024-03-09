@@ -60,8 +60,6 @@ def simulate(**kwargs):
     schema['root_directory'] = os.path.split(Path(kwargs['schema']).absolute())[0]
     simulation_id = kwargs.get('simulation_id', schema['simulation_id'])
 
-    print(schema['simulation_start_time_step'])
-    print(schema['simulation_end_time_step'])
     # set buildings
     if kwargs.get('building', None) is not None:
         for b in schema['buildings']:
