@@ -21,7 +21,11 @@ from preprocess import get_settings, get_timestamps
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
+<<<<<<< HEAD
 def run_work_order(work_order_filepath, virtual_environment_path="/home/s1914839/data1/benchmark_env/", windows_system=None):
+=======
+def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
+>>>>>>> 267a870b765f63c9bfdaf37bba2b94611266f0b6
     settings = get_settings()
     work_order_filepath = Path(work_order_filepath)
 
