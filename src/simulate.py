@@ -21,7 +21,7 @@ from preprocess import get_settings, get_timestamps
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/benchmark/benchmark_env/", windows_system=None):
+def run_work_order(work_order_filepath, virtual_environment_path="/home/s1914839/data1/benchmark_env/", windows_system=None):
     settings = get_settings()
     work_order_filepath = Path(work_order_filepath)
 
@@ -101,15 +101,21 @@ def simulate(**kwargs):
     # schema['simulation_end_time_step'] = int(timestamps[
     #     timestamps['timestamp']==settings['season_timestamps'][season]['test_end_timestamp']
     # ].iloc[0].name)
+
     eval_env = CityLearnEnv(schema, central_agent=True)
     eval_env = NormalizedObservationWrapper(eval_env)
     eval_env = StableBaselines3Wrapper(eval_env)
     observations = eval_env.reset()
     start_timestamp = datetime.utcnow()
 
+    vec_env = model.get_env()
+    obs = vec_env.reset()
+
     while not eval_env.done:
-        actions, _ = model.predict(observations, deterministic=True)
-        observations, _, _, _ = eval_env.step(actions)
+
+        actions, _ = model.predict(obs, deterministic=True)
+        obs, _, _, _= vec_env.step(actions)
+        eval_env.step(actions[0])
 
     save_data(schema, eval_env, simulation_id, simulation_output_path, timestamps, start_timestamp, 0, 'test')
     
