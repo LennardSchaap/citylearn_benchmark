@@ -87,6 +87,10 @@ def simulate(**kwargs):
     env = NormalizedObservationWrapper(env)
     env = StableBaselines3Wrapper(env)
 
+    # obs = env.reset()
+    # print(obs)
+    # exit()
+
     # learn
     model = SAC('MlpPolicy', env, verbose=2, learning_starts=env.unwrapped.time_steps, seed=0)
     episodes = env.schema['episodes']
