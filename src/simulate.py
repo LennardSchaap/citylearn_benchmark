@@ -21,11 +21,8 @@ from preprocess import get_settings, get_timestamps
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-<<<<<<< HEAD
-def run_work_order(work_order_filepath, virtual_environment_path="/home/s1914839/data1/benchmark_env/", windows_system=None):
-=======
 def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
->>>>>>> 267a870b765f63c9bfdaf37bba2b94611266f0b6
+
     settings = get_settings()
     work_order_filepath = Path(work_order_filepath)
 
@@ -86,6 +83,8 @@ def simulate(**kwargs):
     os.makedirs(simulation_output_path, exist_ok=True)
     set_logger(simulation_id, simulation_output_path)
 
+    schema['central_agent'] = True
+    schema['episodes'] = 1
     # set env and agents
     env = CityLearnEnv(schema, central_agent=True)
     env = NormalizedObservationWrapper(env)
@@ -122,6 +121,8 @@ def simulate(**kwargs):
     while not eval_env.done:
 
         actions, _ = model.predict(obs, deterministic=True)
+        print("Actions: ", actions)
+        print("observations: ", observations)
         obs, _, _, _= vec_env.step(actions)
         eval_env.step(actions[0])
 
@@ -302,8 +303,8 @@ def main():
     # simulate
     subparser_simulate = subparsers.add_parser('simulate')
     subparser_simulate.add_argument('schema', type=str)
-    subparser_simulate.add_argument('simulation_id', type=str)
-    subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
+    # subparser_simulate.add_argument('simulation_id', type=str)
+    # subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
     subparser_simulate.set_defaults(func=simulate)
 
     # run work order
