@@ -18,8 +18,37 @@ from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wra
 from citylearn.utilities import read_json
 from preprocess import get_settings, get_timestamps
 
+#TEST
+import wandb
+from wandb.integration.sb3 import WandbCallback
+
+from stable_baselines3.ppo import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.monitor import Monitor
+import gymnasium
+
+import warnings
+
+# Suppress Gymnasium warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
+
+
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
+
+class LossLogger(BaseCallback):
+    def __init__(self,log_frequency=1, verbose=1):
+        super(LossLogger, self).__init__(verbose)
+        self.verbose=verbose
+        self.log_frequency=log_frequency
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self.log_frequency == 0:
+            if (self.verbose == 1):
+                wandb.log({"actor_loss" : self.model.logger.name_to_value['train/actor_loss']})
+                wandb.log({"critic_loss" : self.model.logger.name_to_value['train/critic_loss']})
+        return True
+
 
 def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
 
@@ -83,32 +112,38 @@ def simulate(**kwargs):
     os.makedirs(simulation_output_path, exist_ok=True)
     set_logger(simulation_id, simulation_output_path)
 
-    schema['central_agent'] = True
-    schema['episodes'] = 1
+    # schema['central_agent'] = True
+    schema['episodes'] = 50
     # set env and agents
     env = CityLearnEnv(schema, central_agent=True)
     env = NormalizedObservationWrapper(env)
     env = StableBaselines3Wrapper(env)
 
-    # obs = env.reset()
-    # print(obs)
-    # exit()
+    # Wandb testing
+    episodes = env.unwrapped.schema['episodes']
+    total_timesteps=(env.unwrapped.time_steps)*episodes
 
-    # learn
-    model = SAC('MlpPolicy', env, verbose=2, learning_starts=env.unwrapped.time_steps, seed=0)
-    episodes = env.schema['episodes']
-    callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes)
-    model.learn(total_timesteps=(env.unwrapped.time_steps)*episodes, log_interval=1000, callback=callback)
+    config = {
+        "policy_type": "MlpPolicy",
+        "total_timesteps": total_timesteps,
+        "env_name": "CityLearn",
+    }
 
-    # evaluate
-    # season = schema['season']
-    # schema['simulation_start_time_step'] = int(timestamps[
-    #     timestamps['timestamp']==settings['season_timestamps'][season]['test_start_timestamp']
-    # ].iloc[0].name)
-    # schema['simulation_end_time_step'] = int(timestamps[
-    #     timestamps['timestamp']==settings['season_timestamps'][season]['test_end_timestamp']
-    # ].iloc[0].name)
+    run = wandb.init(
+        project="sb3_v3",
+        config=config,
+    )
 
+    model = SAC(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
+
+    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
+    wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
+    loss_callback = LossLogger()
+
+    model.learn(total_timesteps = config["total_timesteps"], callback=[wandb_callback,save_data_callback, loss_callback])
+
+
+    #Evaluate
     eval_env = CityLearnEnv(schema, central_agent=True)
     eval_env = NormalizedObservationWrapper(eval_env)
     eval_env = StableBaselines3Wrapper(eval_env)
@@ -149,13 +184,15 @@ class SaveDataCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         # print to log
-        LOGGER.debug(
-            f'Time step: {self.env.time_step}/{self.env.time_steps - 1},'\
-                f' Episode: {self.episode}/{self.episodes - 1},'\
-        )
+        if self.env.unwrapped.time_step % 100 == 0:
+            info = f'Time step: {self.env.unwrapped.time_step}/{self.env.unwrapped.time_steps - 1}, Episode: {self.episode + 1}/{self.episodes}'
+            LOGGER.debug(info)
+            print(info)
+
 
         # save timer data
         if self.env.time_step == self.env.time_steps - 2:
+            print("Saving data...")
             save_data(
                 self.schema, 
                 self.env, 
@@ -248,6 +285,14 @@ def save_data(schema, env, simulation_id, simulation_output_path, timestamps, st
     env_data.to_csv(env_filepath, index=False)
     del data_list
     del env_data
+
+    # Log rewards to Wandb
+    rewards = env.rewards[1:]
+    rewards = sum(rewards, [])
+
+    for reward in rewards:
+        wandb.log({"rewards": reward})
+
     
     # save reward data
     reward_data = pd.DataFrame(env.rewards, columns=['reward'])
@@ -303,8 +348,8 @@ def main():
     # simulate
     subparser_simulate = subparsers.add_parser('simulate')
     subparser_simulate.add_argument('schema', type=str)
-    # subparser_simulate.add_argument('simulation_id', type=str)
-    # subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
+    subparser_simulate.add_argument('simulation_id', type=str)
+    subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
     subparser_simulate.set_defaults(func=simulate)
 
     # run work order
