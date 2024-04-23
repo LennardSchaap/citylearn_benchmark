@@ -32,23 +32,13 @@ import warnings
 # Suppress Gymnasium warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
 
-
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-class LossLogger(BaseCallback):
-    def __init__(self,log_frequency=1, verbose=1):
-        super(LossLogger, self).__init__(verbose)
-        self.verbose=verbose
-        self.log_frequency=log_frequency
-
-    def _on_step(self) -> bool:
-        if self.n_calls % self.log_frequency == 0:
-            if (self.verbose == 1):
-                wandb.log({"actor_loss" : self.model.logger.name_to_value['train/actor_loss']})
-                wandb.log({"critic_loss" : self.model.logger.name_to_value['train/critic_loss']})
-        return True
-
+training_config = {
+    "log_to_wandb" : False,
+    "model" : "PPO"
+}
 
 def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
 
@@ -112,8 +102,6 @@ def simulate(**kwargs):
     os.makedirs(simulation_output_path, exist_ok=True)
     set_logger(simulation_id, simulation_output_path)
 
-    # schema['central_agent'] = True
-    schema['episodes'] = 50
     # set env and agents
     env = CityLearnEnv(schema, central_agent=True)
     env = NormalizedObservationWrapper(env)
@@ -129,19 +117,33 @@ def simulate(**kwargs):
         "env_name": "CityLearn",
     }
 
-    run = wandb.init(
-        project="sb3_v3",
-        config=config,
-    )
-
-    model = SAC(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
-
     save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
-    wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
-    loss_callback = LossLogger()
+    callbacks = [save_data_callback]
 
-    model.learn(total_timesteps = config["total_timesteps"], callback=[wandb_callback,save_data_callback, loss_callback])
+    if training_config["model"] == "PPO":
+        model_class = PPO
+    elif training_config["model"] == "SAC":
+        model_class = SAC
 
+    if training_config["log_to_wandb"]:
+        run = wandb.init(project="sb3_independent", config=config)
+        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
+        callbacks.append(wandb_callback)
+        model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
+    else:
+        model = model_class(config["policy_type"], env, verbose=2)
+
+    # Train the model
+    model.learn(total_timesteps=config["total_timesteps"], callback=callbacks)
+
+    # evaluate
+    season = schema['season']
+    schema['simulation_start_time_step'] = int(timestamps[
+        timestamps['timestamp']==settings['season_timestamps'][season]['test_start_timestamp']
+    ].iloc[0].name)
+    schema['simulation_end_time_step'] = int(timestamps[
+        timestamps['timestamp']==settings['season_timestamps'][season]['test_end_timestamp']
+    ].iloc[0].name)
 
     #Evaluate
     eval_env = CityLearnEnv(schema, central_agent=True)
@@ -156,8 +158,6 @@ def simulate(**kwargs):
     while not eval_env.done:
 
         actions, _ = model.predict(obs, deterministic=True)
-        print("Actions: ", actions)
-        print("observations: ", observations)
         obs, _, _, _= vec_env.step(actions)
         eval_env.step(actions[0])
 
@@ -205,6 +205,48 @@ class SaveDataCallback(BaseCallback):
             )
             self.episode += 1
             self.start_timestamp = datetime.utcnow()
+
+            rewards = self.env.unwrapped.rewards[1:]
+            rewards = sum(rewards, [])
+
+            kpi_data = self.env.unwrapped.evaluate()
+
+            # Filter relevant KPI's: 
+            electricity_consumption_district = kpi_data.loc[(kpi_data['cost_function'] == 'electricity_consumption') & (kpi_data['level'] == 'district'), 'value'].values[0]
+            average_daily_peak_values = kpi_data.loc[kpi_data['cost_function'] == 'average_daily_peak', 'value']
+            ramping_values = kpi_data.loc[kpi_data['cost_function'] == 'ramping', 'value']
+            peak_demand_values = kpi_data.loc[kpi_data['cost_function'] == 'peak_demand', 'value']
+            load_factor_value = kpi_data.loc[kpi_data['cost_function'] == '1 - load_factor', 'value']
+
+            if training_config["model"] == "PPO":
+                losses_dict = {
+                    "loss": self.model.logger.name_to_value['train/loss']
+                }
+            elif training_config["model"] == "SAC":
+                losses_dict = {
+                    "actor_loss": self.model.logger.name_to_value['train/actor_loss'],
+                    "critic_loss": self.model.logger.name_to_value['train/critic_loss']
+                }
+
+            log_data = {
+                "rewards": {
+                    "average_reward": sum(rewards) / len(rewards)
+                },
+                "losses": losses_dict,
+                "kpis": {
+                    "average_daily_peak": np.nanmean(average_daily_peak_values),
+                    "ramping": np.nanmean(ramping_values),
+                    "peak_demand": np.nanmean(peak_demand_values),
+                    "load_factor": load_factor_value.values[0] if not load_factor_value.empty else None,
+                    "electricity_consumption_district": electricity_consumption_district
+                }
+            }
+
+            print(log_data)
+
+            # Log rewards, losses and KPI's to Wandb:
+            if training_config["log_to_wandb"]:
+                wandb.log(log_data)
 
         else:
             pass
