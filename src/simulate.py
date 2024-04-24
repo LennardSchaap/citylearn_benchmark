@@ -36,8 +36,8 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
-    "log_to_wandb" : False,
-    "model" : "PPO"
+    "log_to_wandb" : True,
+    "model" : "SAC"
 }
 
 def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
@@ -327,14 +327,6 @@ def save_data(schema, env, simulation_id, simulation_output_path, timestamps, st
     env_data.to_csv(env_filepath, index=False)
     del data_list
     del env_data
-
-    # Log rewards to Wandb
-    rewards = env.rewards[1:]
-    rewards = sum(rewards, [])
-
-    for reward in rewards:
-        wandb.log({"rewards": reward})
-
     
     # save reward data
     reward_data = pd.DataFrame(env.rewards, columns=['reward'])

@@ -75,8 +75,11 @@ def set_schema(**kwargs):
     # schema['root_directory'] = district_directory
     schema['root_directory'] = None
     schema['central_agent'] = settings['central_agent']
-    schema['simulation_start_time_step'] = 0
-    schema['simulation_end_time_step'] = 8759
+    
+    season = 'summer'
+    schema['season'] = season
+    schema['simulation_start_time_step'] = int(timestamps[timestamps['timestamp']==settings['season_timestamps'][season]['train_start_timestamp']].iloc[0].name)
+    schema['simulation_end_time_step'] = int(timestamps[timestamps['timestamp']==settings['season_timestamps'][season]['train_end_timestamp']].iloc[0].name)
     schema['episodes'] = settings['episodes']
     time_steps = schema['simulation_end_time_step'] - schema['simulation_start_time_step']
 
