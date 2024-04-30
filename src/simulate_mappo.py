@@ -12,6 +12,7 @@ from datetime import datetime
 from multiprocessing import cpu_count
 from pathlib import Path
 import socket
+import setproctitle
 
 # Third-Party Library Imports
 import numpy as np
@@ -34,9 +35,10 @@ from citylearn.utilities import read_json
 from preprocess import get_settings, get_timestamps
 
 # Local Imports
+from args.mappo_args import mappo_args
 
 # Get the parent directory of the current file
-parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+parent_dir = os.path.abspath(os.path.join(os.getcwd(), "."))
 sys.path.append(parent_dir)
 from envs.env_wrappers import DummyVecEnv
 
@@ -73,7 +75,6 @@ def make_train_env(all_args):
 
     return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
-
 def make_eval_env(all_args):
     def get_env_fn(rank):
         def init_env():
@@ -91,40 +92,110 @@ def make_eval_env(all_args):
 
     return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
+def start_mappo(envs, eval_envs):
 
-def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
+    all_args = mappo_args
 
-    settings = get_settings()
-    work_order_filepath = Path(work_order_filepath)
-
-    if virtual_environment_path is not None:    
-        if windows_system:
-            virtual_environment_command = f'"{os.path.join(virtual_environment_path, "Scripts", "Activate.ps1")}"'
-        else:
-            virtual_environment_command = f'source "{os.path.join(virtual_environment_path, "bin", "activate")}"'
+    if all_args.algorithm_name == "rmappo":
+        assert all_args.use_recurrent_policy or all_args.use_naive_recurrent_policy, "check recurrent policy!"
+    elif all_args.algorithm_name == "mappo":
+        assert (
+            all_args.use_recurrent_policy == False and all_args.use_naive_recurrent_policy == False
+        ), "check recurrent policy!"
     else:
-        virtual_environment_command = 'echo "No virtual environment"'
+        raise NotImplementedError
 
-    with open(work_order_filepath,mode='r') as f:
-        args = f.read()
-    
-    args = args.strip('\n').split('\n')
-    args = [f'{virtual_environment_command} && {a}' for a in args]
-    settings = get_settings()
-    max_workers = settings['max_workers'] if settings.get('max_workers',None) is not None else cpu_count()
-    
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        print(f'Will use {max_workers} workers for job.')
-        print(f'Pooling {len(args)} jobs to run in parallel...')
-        results = [executor.submit(subprocess.run,**{'args':a, 'shell':True}) for a in args]
-            
-        for future in concurrent.futures.as_completed(results):
-            try:
-                print(future.result())
-            except Exception as e:
-                print(e)
+    assert (
+        all_args.share_policy == True and all_args.scenario_name == "simple_speaker_listener"
+    ) == False, "The simple_speaker_listener scenario can not use shared policy. Please check the config.py."
+
+    # cuda
+    if all_args.cuda and torch.cuda.is_available():
+        print("choose to use gpu...")
+        device = torch.device("cuda:0")
+        torch.set_num_threads(all_args.n_training_threads)
+        if all_args.cuda_deterministic:
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+    else:
+        print("choose to use cpu...")
+        device = torch.device("cpu")
+        torch.set_num_threads(all_args.n_training_threads)
+
+    # run dir
+    run_dir = (
+        Path(os.path.split(os.path.dirname(os.path.abspath(__file__)))[0] + "/results")
+        / all_args.env_name
+        / all_args.scenario_name
+        / all_args.algorithm_name
+        / all_args.experiment_name
+    )
+    if not run_dir.exists():
+        os.makedirs(str(run_dir))
+
+    if not run_dir.exists():
+        curr_run = "run1"
+    else:
+        exst_run_nums = [
+            int(str(folder.name).split("run")[1])
+            for folder in run_dir.iterdir()
+            if str(folder.name).startswith("run")
+        ]
+        if len(exst_run_nums) == 0:
+            curr_run = "run1"
+        else:
+            curr_run = "run%i" % (max(exst_run_nums) + 1)
+    run_dir = run_dir / curr_run
+    if not run_dir.exists():
+        os.makedirs(str(run_dir))
+
+    setproctitle.setproctitle(
+        str(all_args.algorithm_name)
+        + "-"
+        + str(all_args.env_name)
+        + "-"
+        + str(all_args.experiment_name)
+        + "@"
+        + str(all_args.user_name)
+    )
+
+    # seed
+    torch.manual_seed(all_args.seed)
+    torch.cuda.manual_seed_all(all_args.seed)
+    np.random.seed(all_args.seed)
+
+
+
+    num_agents = all_args.num_agents
+
+    config = {
+        "all_args": all_args,
+        "envs": envs,
+        "eval_envs": eval_envs,
+        "num_agents": num_agents,
+        "device": device,
+        "run_dir": run_dir,
+    }
+
+    # run experiments
+    if all_args.share_policy:
+        from runner.shared.env_runner import EnvRunner as Runner
+    else:
+        from runner.separated.env_runner import EnvRunner as Runner
+
+    runner = Runner(config)
+    runner.run()
+
+    # post process
+    envs.close()
+    if all_args.use_eval and eval_envs is not envs:
+        eval_envs.close()
+
+    runner.writter.export_scalars_to_json(str(runner.log_dir + "/summary.json"))
+    runner.writter.close()
 
 def simulate(**kwargs):
+
     settings = get_settings()
     timestamps = get_timestamps()
     schema = kwargs['schema']
@@ -132,18 +203,11 @@ def simulate(**kwargs):
     schema['root_directory'] = os.path.split(Path(kwargs['schema']).absolute())[0]
     simulation_id = kwargs.get('simulation_id', schema['simulation_id'])
 
-    building_name = ""
-    schema['episodes'] = training_config['episodes']
-    schema['reward_function'] = {
-        "type": "reward_function.CustomReward",
-    }
-
     # set buildings
     if kwargs.get('building', None) is not None:
         for b in schema['buildings']:
             if b == kwargs['building']:
                 schema['buildings'][b]['include'] = True
-                building_name = b
             else:
                 schema['buildings'][b]['include'] = False
 
@@ -152,6 +216,7 @@ def simulate(**kwargs):
     
     # set simulation output path
     simulation_output_path = os.path.join(settings['simulation_output_directory'], simulation_id)
+    print(simulation_output_path)
 
     if os.path.isdir(simulation_output_path):
         shutil.rmtree(simulation_output_path)
@@ -161,44 +226,31 @@ def simulate(**kwargs):
     os.makedirs(simulation_output_path, exist_ok=True)
     set_logger(simulation_id, simulation_output_path)
 
-    # set env and agents
-    env = CityLearnEnv(schema, central_agent=True)
-    env = NormalizedObservationWrapper(env)
-    env = StableBaselines3Wrapper(env)
+    schema['central_agent'] = False
+
+    # env init
+    envs = make_train_env(mappo_args)
+    eval_envs = make_eval_env(mappo_args) if mappo_args.use_eval else None
 
     # Wandb testing
-    episodes = env.unwrapped.schema['episodes']
-    total_timesteps=(env.unwrapped.time_steps)*episodes
+    # TODO edit
+    # episodes = env.unwrapped.schema['episodes']
+    # total_timesteps=(env.unwrapped.time_steps)*episodes
 
-    config = {
-        "policy_type": "MlpPolicy",
-        "total_timesteps": total_timesteps,
-        "env_name": "CityLearn",
-    }
+    # save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
+    # callbacks = [save_data_callback]
 
-    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
-    callbacks = [save_data_callback]
-
-    if training_config["model"] == "PPO":
-        model_class = PPO
-    elif training_config["model"] == "SAC":
-        model_class = SAC
-    elif training_config["model"] == "DDPG":
-        model_class = DDPG
-    elif training_config["model"] == "TD3":
-        model_class = TD3
-
-    if training_config["log_to_wandb"]:
-        project_name ="sb3_independent_" + training_config["model"] + "_" + training_config["version"]
-        run = wandb.init(project=project_name, name=building_name, config=config)
-        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
-        callbacks.append(wandb_callback)
-        model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
-    else:
-        model = model_class(config["policy_type"], env, verbose=2)
+    # if training_config["log_to_wandb"]:
+    #     run = wandb.init(project="sb3_v3", config=config)
+    #     wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
+    #     callbacks.append(wandb_callback)
+    #     model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
+    # else:
 
     # Train the model
-    model.learn(total_timesteps=config["total_timesteps"], callback=callbacks)
+    start_mappo(envs, eval_envs)
+
+    print("Evaluating")
 
     # evaluate
     season = schema['season']
@@ -209,7 +261,6 @@ def simulate(**kwargs):
         timestamps['timestamp']==settings['season_timestamps'][season]['test_end_timestamp']
     ].iloc[0].name)
 
-    #Evaluate
     eval_env = CityLearnEnv(schema, central_agent=True)
     eval_env = NormalizedObservationWrapper(eval_env)
     eval_env = StableBaselines3Wrapper(eval_env)
@@ -253,9 +304,8 @@ class SaveDataCallback(BaseCallback):
             LOGGER.debug(info)
             print(info)
 
-
         # save timer data
-        if self.env.time_step == self.env.time_steps - 2:
+        if self.env.unwrapped.time_step == self.env.unwrapped.time_steps - 2:
             print("Saving data...")
             save_data(
                 self.schema, 
@@ -282,13 +332,11 @@ class SaveDataCallback(BaseCallback):
             peak_demand_values = kpi_data.loc[kpi_data['cost_function'] == 'peak_demand', 'value']
             load_factor_value = kpi_data.loc[kpi_data['cost_function'] == '1 - load_factor', 'value']
 
-            losses_dict = {}
-
             if training_config["model"] == "PPO":
                 losses_dict = {
                     "loss": self.model.logger.name_to_value['train/loss']
                 }
-            elif training_config["model"] == "SAC" or training_config["model"] == "DDPG":
+            elif training_config["model"] == "SAC":
                 losses_dict = {
                     "actor_loss": self.model.logger.name_to_value['train/actor_loss'],
                     "critic_loss": self.model.logger.name_to_value['train/critic_loss']
@@ -393,8 +441,8 @@ def save_data(schema, env, simulation_id, simulation_output_path, timestamps, st
     env_data.to_csv(env_filepath, index=False)
     del data_list
     del env_data
-    
-    # save reward data
+
+    # save reward data  
     reward_data = pd.DataFrame(env.rewards, columns=['reward'])
     reward_data['time_step'] = reward_data.index
     reward_data['building_name'] = None
@@ -415,7 +463,8 @@ def save_data(schema, env, simulation_id, simulation_output_path, timestamps, st
 
     # save KPIs
     ## building level
-    kpi_data = env.evaluate()
+    kpi_data = env.unwrapped.evaluate()
+
     kpi_data['mode'] = mode
     kpi_data['episode'] = episode
     kpi_data['simulation_id'] = simulation_id
@@ -448,14 +497,9 @@ def main():
     # simulate
     subparser_simulate = subparsers.add_parser('simulate')
     subparser_simulate.add_argument('schema', type=str)
-    subparser_simulate.add_argument('simulation_id', type=str)
-    subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
+    # subparser_simulate.add_argument('simulation_id', type=str)
+    # subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
     subparser_simulate.set_defaults(func=simulate)
-
-    # run work order
-    subparser_run_work_order = subparsers.add_parser('run_work_order')
-    subparser_run_work_order.add_argument('work_order_filepath', type=Path)
-    subparser_run_work_order.set_defaults(func=run_work_order)
 
     args = parser.parse_args()
     arg_spec = inspect.getfullargspec(args.func)
