@@ -1,36 +1,44 @@
+# Standard Library Imports
 import argparse
 import concurrent.futures
-from datetime import datetime
 import inspect
 import logging
 import os
-from pathlib import Path
 import shutil
 import subprocess
-from stable_baselines3.sac import SAC
-from stable_baselines3.common.callbacks import BaseCallback
 import sys
+import warnings
+from datetime import datetime
 from multiprocessing import cpu_count
+from pathlib import Path
+import socket
+
+# Third-Party Library Imports
 import numpy as np
 import pandas as pd
-from citylearn.citylearn import CityLearnEnv
-from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
-from citylearn.utilities import read_json
-from preprocess import get_settings, get_timestamps
-
-#TEST
+import gymnasium
+import json
+import torch
 import wandb
 from wandb.integration.sb3 import WandbCallback
-
+from stable_baselines3.sac import SAC
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.ppo import PPO
 from stable_baselines3.ddpg import DDPG
 from stable_baselines3.td3 import TD3
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
-import gymnasium
-import json
+from citylearn.citylearn import CityLearnEnv
+from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
+from citylearn.utilities import read_json
+from preprocess import get_settings, get_timestamps
 
-import warnings
+# Local Imports
+
+# Get the parent directory of the current file
+parent_dir = os.path.abspath(os.path.join(os.getcwd(), ".."))
+sys.path.append(parent_dir)
+from envs.env_wrappers import DummyVecEnv
 
 # Suppress Gymnasium warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
@@ -40,10 +48,49 @@ LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
     "log_to_wandb" : True,
-    "model" : "SAC",
+    "model" : "MAPPO",
     "episodes" : 60,
     "version" : "60_eps_custom_rew"
 }
+
+def make_train_env(all_args):
+    def get_env_fn(rank):
+        def init_env():
+            # TODO 注意注意，这里选择连续还是离散可以选择注释上面两行，或者下面两行。
+            # TODO Important, here you can choose continuous or discrete action space by uncommenting the above two lines or the below two lines.
+
+            from envs.env_continuous import ContinuousActionEnv
+
+            env = ContinuousActionEnv()
+            # from envs.env_discrete import DiscreteActionEnv
+
+            # env = DiscreteActionEnv()
+
+            # env.random_seed(all_args.seed + rank * 1000)
+            return env
+
+        return init_env
+
+    return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+
+
+def make_eval_env(all_args):
+    def get_env_fn(rank):
+        def init_env():
+            # TODO 注意注意，这里选择连续还是离散可以选择注释上面两行，或者下面两行。
+            # TODO Important, here you can choose continuous or discrete action space by uncommenting the above two lines or the below two lines.
+            from envs.env_continuous import ContinuousActionEnv
+
+            env = ContinuousActionEnv()
+            # from envs.env_discrete import DiscreteActionEnv
+            # env = DiscreteActionEnv()
+            env.seed(all_args.seed + rank * 1000)
+            return env
+
+        return init_env
+
+    return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+
 
 def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
 
