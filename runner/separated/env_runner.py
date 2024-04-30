@@ -23,6 +23,7 @@ class EnvRunner(Runner):
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
 
         for episode in range(episodes):
+
             if self.use_linear_lr_decay:
                 for agent_id in range(self.num_agents):
                     self.trainer[agent_id].policy.lr_decay(episode, episodes)

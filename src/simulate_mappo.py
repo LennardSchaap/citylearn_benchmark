@@ -95,6 +95,8 @@ def make_eval_env(all_args):
 def start_mappo(envs, eval_envs):
 
     all_args = mappo_args
+    all_args.episode_length = envs.envs[0].env.time_steps
+    print(all_args.episode_length)
 
     if all_args.algorithm_name == "rmappo":
         assert all_args.use_recurrent_policy or all_args.use_naive_recurrent_policy, "check recurrent policy!"

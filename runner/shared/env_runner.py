@@ -73,6 +73,8 @@ class EnvRunner(Runner):
             if episode % self.save_interval == 0 or episode == episodes - 1:
                 self.save()
 
+            print(episode)
+
             # log information
             if episode % self.log_interval == 0:
                 end = time.time()

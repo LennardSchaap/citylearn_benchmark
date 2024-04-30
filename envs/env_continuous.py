@@ -12,9 +12,9 @@ class ContinuousActionEnv(object):
     """
 
     def __init__(self):
-        self.env = CityLearnEnv("citylearn_challenge_2022_phase_1", central_agent=False)
-        dataset = "/home/wortel/Documents/citylearn_benchmark/benchmark/data/neighborhoods/tx_travis_county_neighborhood_10/schema.json"
-        # self.env = CityLearnEnv(dataset, central_agent=False)
+        # self.env = CityLearnEnv("citylearn_challenge_2022_phase_1", central_agent=False)
+        dataset = "/home/wortel/Documents/citylearn_benchmark/benchmark/data/neighborhoods/tx_travis_county_neighborhood_5/schema.json"
+        self.env = CityLearnEnv(dataset, central_agent=False)
 
         self.num_agent = len(self.env.buildings)
 
