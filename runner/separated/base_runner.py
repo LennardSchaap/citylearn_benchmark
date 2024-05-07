@@ -8,6 +8,7 @@ from tensorboardX import SummaryWriter
 from utils.separated_buffer import SeparatedReplayBuffer
 from utils.util import update_linear_schedule
 
+import wandb
 
 def _t2n(x):
     return x.detach().cpu().numpy()
@@ -20,6 +21,7 @@ class Runner(object):
         self.eval_envs = config["eval_envs"]
         self.device = config["device"]
         self.num_agents = config["num_agents"]
+        self.log_to_wandb = config["log_to_wandb"]
 
         # parameters
         self.env_name = self.all_args.env_name
@@ -45,6 +47,9 @@ class Runner(object):
         # dir
         self.model_dir = self.all_args.model_dir
 
+        if self.log_to_wandb:
+            run = wandb.init(project="mappo")
+
         if self.use_render:
             import imageio
 
@@ -53,17 +58,17 @@ class Runner(object):
             if not os.path.exists(self.gif_dir):
                 os.makedirs(self.gif_dir)
         else:
-            # if self.use_wandb:
-            #     self.save_dir = str(wandb.run.dir)
-            # else:
-            self.run_dir = config["run_dir"]
-            self.log_dir = str(self.run_dir / "logs")
-            if not os.path.exists(self.log_dir):
-                os.makedirs(self.log_dir)
-            self.writter = SummaryWriter(self.log_dir)
-            self.save_dir = str(self.run_dir / "models")
-            if not os.path.exists(self.save_dir):
-                os.makedirs(self.save_dir)
+            if self.log_to_wandb:
+                self.save_dir = str(wandb.run.dir)
+            else:
+                self.run_dir = config["run_dir"]
+                self.log_dir = str(self.run_dir / "logs")
+                if not os.path.exists(self.log_dir):
+                    os.makedirs(self.log_dir)
+                self.writter = SummaryWriter(self.log_dir)
+                self.save_dir = str(self.run_dir / "models")
+                if not os.path.exists(self.save_dir):
+                    os.makedirs(self.save_dir)
 
         from algorithms.algorithm.r_mappo import RMAPPO as TrainAlgo
         from algorithms.algorithm.rMAPPOPolicy import RMAPPOPolicy as Policy
@@ -170,16 +175,15 @@ class Runner(object):
         for agent_id in range(self.num_agents):
             for k, v in train_infos[agent_id].items():
                 agent_k = "agent%i/" % agent_id + k
-                # if self.use_wandb:
-                #     pass
-                # wandb.log({agent_k: v}, step=total_num_steps)
-                # else:
-                self.writter.add_scalars(agent_k, {agent_k: v}, total_num_steps)
+                if self.log_to_wandb:
+                    wandb.log({agent_k: v}, step=total_num_steps)
+                else:
+                    self.writter.add_scalars(agent_k, {agent_k: v}, total_num_steps)
 
     def log_env(self, env_infos, total_num_steps):
         for k, v in env_infos.items():
             if len(v) > 0:
-                # if self.use_wandb:
-                #     wandb.log({k: np.mean(v)}, step=total_num_steps)
-                # else:
-                self.writter.add_scalars(k, {k: np.mean(v)}, total_num_steps)
+                if self.log_to_wandb:
+                    wandb.log({k: np.mean(v)}, step=total_num_steps)
+                else:
+                    self.writter.add_scalars(k, {k: np.mean(v)}, total_num_steps)

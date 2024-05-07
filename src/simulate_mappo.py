@@ -92,11 +92,10 @@ def make_eval_env(all_args):
 
     return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
-def start_mappo(envs, eval_envs):
+def start_mappo(envs, eval_envs, simulation_id, simulation_output_path, timestamps, training_config):
 
     all_args = mappo_args
     all_args.episode_length = envs.envs[0].env.time_steps
-    print(all_args.episode_length)
 
     if all_args.algorithm_name == "rmappo":
         assert all_args.use_recurrent_policy or all_args.use_naive_recurrent_policy, "check recurrent policy!"
@@ -179,13 +178,14 @@ def start_mappo(envs, eval_envs):
         "run_dir": run_dir,
     }
 
+    config.update(training_config)
     # run experiments
     if all_args.share_policy:
         from runner.shared.env_runner import EnvRunner as Runner
     else:
         from runner.separated.env_runner import EnvRunner as Runner
 
-    runner = Runner(config)
+    runner = Runner(config, simulation_id, simulation_output_path, timestamps)
     runner.run()
 
     # post process
@@ -250,7 +250,7 @@ def simulate(**kwargs):
     # else:
 
     # Train the model
-    start_mappo(envs, eval_envs)
+    start_mappo(envs, eval_envs, simulation_id, simulation_output_path, timestamps, training_config)
 
     print("Evaluating")
 

@@ -3,19 +3,25 @@ import os
 import numpy as np
 from itertools import chain
 import torch
+from datetime import datetime
+import pandas as pd
 
 from utils.util import update_linear_schedule
 from runner.separated.base_runner import Runner
 
+import wandb
 
 def _t2n(x):
     return x.detach().cpu().numpy()
 
 
 class EnvRunner(Runner):
-    def __init__(self, config):
+    def __init__(self, config, simulation_id, simulation_output_path, timestamps):
         super(EnvRunner, self).__init__(config)
-
+        self.simulation_id = simulation_id
+        self.simulation_output_path = simulation_output_path
+        self.timestamps = timestamps
+        self.config = config
     def run(self):
         self.warmup()
 
@@ -42,6 +48,9 @@ class EnvRunner(Runner):
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
 
+                # if episode > 0:
+                #     print(rewards, step)
+                #     print(self.envs.envs[0].env.rewards)
                 data = (
                     obs,
                     rewards,
@@ -57,6 +66,22 @@ class EnvRunner(Runner):
                 # insert data into buffer
                 self.insert(data)
 
+                if step == self.episode_length - 3:
+                    # print(step)
+                    # print(len(self.envs.envs))
+                    # print(self.envs.envs[0].env.rewards)
+                    save_and_log_data(self.envs.envs[0].env.schema, 
+                                      self.envs.envs[0].env, 
+                                      self.simulation_id, 
+                                      self.simulation_output_path, 
+                                      self.timestamps, 
+                                      episode, 
+                                      model=None, 
+                                      training_config=self.config)
+                    #TODO: is dit goed?
+                    self.envs.reset()
+
+
             # compute return and update network
             self.compute()
             train_infos = self.train()
@@ -69,35 +94,34 @@ class EnvRunner(Runner):
                 self.save()
 
             # log information
-            if episode % self.log_interval == 0:
-                end = time.time()
-                print(
-                    "\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n".format(
-                        self.all_args.scenario_name,
-                        self.algorithm_name,
-                        self.experiment_name,
-                        episode,
-                        episodes,
-                        total_num_steps,
-                        self.num_env_steps,
-                        int(total_num_steps / (end - start)),
-                    )
+            end = time.time()
+            print(
+                "\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n".format(
+                    self.all_args.scenario_name,
+                    self.algorithm_name,
+                    self.experiment_name,
+                    episode,
+                    episodes,
+                    total_num_steps,
+                    self.num_env_steps,
+                    int(total_num_steps / (end - start)),
                 )
+            )
 
-                if self.env_name == "MPE":
-                    for agent_id in range(self.num_agents):
-                        idv_rews = []
-                        for info in infos:
-                            if "individual_reward" in info[agent_id].keys():
-                                idv_rews.append(info[agent_id]["individual_reward"])
-                        train_infos[agent_id].update({"individual_rewards": np.mean(idv_rews)})
-                        train_infos[agent_id].update(
-                            {
-                                "average_episode_rewards": np.mean(self.buffer[agent_id].rewards)
-                                * self.episode_length
-                            }
-                        )
-                self.log_train(train_infos, total_num_steps)
+            if self.env_name == "MPE":
+                for agent_id in range(self.num_agents):
+                    idv_rews = []
+                    for info in infos:
+                        if "individual_reward" in info[agent_id].keys():
+                            idv_rews.append(info[agent_id]["individual_reward"])
+                    train_infos[agent_id].update({"individual_rewards": np.mean(idv_rews)})
+                    train_infos[agent_id].update(
+                        {
+                            "average_episode_rewards": np.mean(self.buffer[agent_id].rewards)
+                            * self.episode_length
+                        }
+                    )
+            self.log_train(train_infos, total_num_steps)
 
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
@@ -111,7 +135,7 @@ class EnvRunner(Runner):
         for o in obs:
             share_obs.append(list(chain(*o)))
         share_obs = np.array(share_obs)  # shape = [env_num, agent_num * obs_dim]
-
+        
         for agent_id in range(self.num_agents):
             if not self.use_centralized_V:
                 share_obs = np.array(list(obs[:, agent_id]))
@@ -399,3 +423,171 @@ class EnvRunner(Runner):
                 all_frames,
                 duration=self.all_args.ifi,
             )
+
+
+
+########### DATA SAVE $$$$$$$$$$$$$$$$$$$
+
+
+def save_and_log_data(schema, env, simulation_id, simulation_output_path, timestamps, episode, model=None, training_config=None):
+
+    mode = 'train'
+    start_timestamp = datetime.utcnow()
+    save_data(
+        schema, 
+        env, 
+        simulation_id, 
+        simulation_output_path, 
+        timestamps, 
+        start_timestamp, 
+        episode, 
+        mode
+    )
+
+
+    rewards = env.rewards[1:]
+    rewards = sum(rewards, [])
+
+    # TODO FIX:
+
+    kpi_data = env.evaluate()
+
+    # Filter relevant KPI's: 
+    electricity_consumption_district = kpi_data.loc[(kpi_data['cost_function'] == 'electricity_consumption') & (kpi_data['level'] == 'district'), 'value'].values[0]
+    average_daily_peak_values = kpi_data.loc[kpi_data['cost_function'] == 'average_daily_peak', 'value']
+    ramping_values = kpi_data.loc[kpi_data['cost_function'] == 'ramping', 'value']
+    peak_demand_values = kpi_data.loc[kpi_data['cost_function'] == 'peak_demand', 'value']
+    load_factor_value = kpi_data.loc[kpi_data['cost_function'] == '1 - load_factor', 'value']
+
+
+    log_data = {
+        "rewards": {
+            "average_reward": sum(rewards) / len(rewards)
+        },
+        "kpis": {
+            "average_daily_peak": np.nanmean(average_daily_peak_values),
+            "ramping": np.nanmean(ramping_values),
+            "peak_demand": np.nanmean(peak_demand_values),
+            "load_factor": load_factor_value.values[0] if not load_factor_value.empty else None,
+            "electricity_consumption_district": electricity_consumption_district
+        }
+    }
+
+    # Log rewards, losses and KPI's to Wandb:
+    if training_config["log_to_wandb"]:
+        wandb.log(log_data)
+
+
+def save_data(schema, env, simulation_id, simulation_output_path, timestamps, start_timestamp, episode, mode):
+    end_timestamp = datetime.utcnow()
+    timer_data = pd.DataFrame([{
+        'simulation_id': simulation_id,
+        'mode': mode,
+        'episode': episode,
+        'start_timestamp': start_timestamp, 
+        'end_timestamp': end_timestamp
+    }])
+    timer_filepath = os.path.join(simulation_output_path, f'{simulation_id}-timer.csv')
+
+    if os.path.isfile(timer_filepath):
+        existing_data = pd.read_csv(timer_filepath)
+        timer_data = pd.concat([existing_data, timer_data], ignore_index=True, sort=False)
+        del existing_data
+    else:
+        pass
+
+    timer_data.to_csv(timer_filepath, index=False)
+    del timer_data
+
+    # save environment summary data
+    data_list = []
+
+    for i, b in enumerate(env.buildings):
+        env_data = pd.DataFrame({
+            'solar_generation': b.solar_generation,
+            'non_shiftable_load_demand': b.non_shiftable_load_demand,
+            'dhw_demand': b.dhw_demand,
+            'heating_demand': b.heating_demand,
+            'cooling_demand': b.cooling_demand,
+            'energy_from_electrical_storage': b.energy_from_electrical_storage,
+            'energy_from_dhw_storage': b.energy_from_dhw_storage,
+            'energy_from_dhw_device': b.energy_from_dhw_device,
+            'energy_from_heating_device': b.energy_from_heating_device,
+            'energy_from_cooling_device': b.energy_from_cooling_device,
+            'energy_to_electrical_storage': b.energy_to_electrical_storage,
+            'energy_from_dhw_device_to_dhw_storage': b.energy_from_dhw_device_to_dhw_storage,
+            'electrical_storage_electricity_consumption': b.electrical_storage_electricity_consumption,
+            'dhw_storage_electricity_consumption': b.dhw_storage_electricity_consumption,
+            'dhw_electricity_consumption': b.dhw_electricity_consumption,
+            'heating_electricity_consumption': b.heating_electricity_consumption,
+            'cooling_electricity_consumption': b.cooling_electricity_consumption,
+            'net_electricity_consumption': b.net_electricity_consumption,
+            'net_electricity_consumption_without_storage': b.net_electricity_consumption_without_storage,
+            'net_electricity_consumption_without_storage_and_pv': b.net_electricity_consumption_without_storage_and_pv,
+            'electrical_storage_soc': np.array(b.electrical_storage.soc)/b.electrical_storage.capacity_history[0],
+            'dhw_storage_soc': np.array(b.dhw_storage.soc)/b.dhw_storage.capacity,
+        })
+        env_data['timestamp'] = timestamps['timestamp'].iloc[
+            schema['simulation_start_time_step']:
+            schema['simulation_start_time_step'] + env.time_step + 1
+        ].tolist()
+        env_data['time_step'] = env_data.index
+        env_data['mode'] = mode
+        env_data['episode'] = episode
+        env_data['building_id'] = i
+        env_data['building_name'] = b.name
+        env_data['simulation_id'] = simulation_id
+        data_list.append(env_data)
+    
+    env_filepath = os.path.join(simulation_output_path, f'{simulation_id}-environment.csv')
+
+    if os.path.isfile(env_filepath):
+        existing_data = pd.read_csv(env_filepath)
+        data_list = [existing_data] + data_list
+        del existing_data
+    else:
+        pass
+    
+    env_data = pd.concat(data_list, ignore_index=True, sort=False)
+    env_data.to_csv(env_filepath, index=False)
+    del data_list
+    del env_data
+
+    # save reward data
+    column_names = [f"{b.name}_reward" for b in env.buildings]
+    reward_data = pd.DataFrame(env.rewards, columns=column_names)
+
+    reward_data['time_step'] = reward_data.index
+    reward_data['mode'] = mode
+    reward_data['episode'] = episode
+    reward_data['simulation_id'] = simulation_id
+    reward_filepath = os.path.join(simulation_output_path, f'{simulation_id}-reward.csv')
+
+    if os.path.isfile(reward_filepath):
+        existing_data = pd.read_csv(reward_filepath)
+        reward_data = pd.concat([existing_data, reward_data], ignore_index=True, sort=False)
+        del existing_data
+    else:
+        pass
+
+    reward_data.to_csv(reward_filepath, index=False)
+    del reward_data
+
+    # save KPIs
+    ## building level
+    kpi_data = env.evaluate()
+
+    kpi_data['mode'] = mode
+    kpi_data['episode'] = episode
+    kpi_data['simulation_id'] = simulation_id
+    kpi_filepath = os.path.join(simulation_output_path, f'{simulation_id}-kpi.csv')
+
+    if os.path.isfile(kpi_filepath):
+        existing_data = pd.read_csv(kpi_filepath)
+        kpi_data = pd.concat([existing_data, kpi_data], ignore_index=True, sort=False)
+        del existing_data
+    else:
+        pass
+
+    kpi_data.to_csv(kpi_filepath, index=False)
+    del kpi_data
