@@ -18,7 +18,7 @@ cachetools==5.3.3
 certifi==2024.2.2
 cffi==1.16.0
 charset-normalizer==3.3.2
-CityLearn @ file:///home/wortel/Documents/citylearn_benchmark/citylearn-v1.8.0-gymnasium
+CityLearn @ file:///home/s1914839/data/citylearn-v1.8.0-gymnasium
 click==8.1.7
 cloudpickle==3.0.0
 comm==0.2.1
@@ -39,7 +39,6 @@ GitPython==3.1.43
 google-auth==2.29.0
 google-auth-oauthlib==1.0.0
 grpcio==1.62.1
-gym==0.21.0
 gymnasium==0.29.1
 h11==0.14.0
 httpcore==1.0.4
