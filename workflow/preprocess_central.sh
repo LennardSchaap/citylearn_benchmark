@@ -1,11 +1,12 @@
 #!/bin/sh
 
-# size equipment
-EXPERIMENT_NAME="$1"
+NUM_BUILDINGS="$1"
+ALGORITHM="$2"
 
-python src/preprocess_central.py $EXPERIMENT_NAME tx_travis_county_neighborhood_5 size_equipment || exit 1
+# size equipment
+python src/preprocess_central.py "tx_travis_county_neighborhood_${NUM_BUILDINGS}" size_equipment || exit 1
 
 # set schema and work order
 
-python src/preprocess_central.py $EXPERIMENT_NAME tx_travis_county_neighborhood_5 set_schema travis-resstock-2 || exit 1
+python src/preprocess_central.py "tx_travis_county_neighborhood_${NUM_BUILDINGS}" set_schema "tx_travis_county_neighborhood_${NUM_BUILDINGS}_${ALGORITHM}" || exit 1
 

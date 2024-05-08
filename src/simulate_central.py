@@ -40,8 +40,8 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
-    "log_to_wandb" : True,
-    "model" : "TD3",
+    "log_to_wandb" : False,
+    "model" : "",
     "episodes" : 600,
     "version" : "600_eps"
 }
@@ -54,7 +54,9 @@ def simulate(**kwargs):
     schema = read_json(os.path.join(settings['schema_directory'], schema))
     schema['root_directory'] = os.path.split(Path(kwargs['schema']).absolute())[0]
     simulation_id = kwargs.get('simulation_id', schema['simulation_id'])
+    algo = kwargs.get('algorithm')
 
+    training_config["model"] = algo
 
     schema['episodes'] = training_config['episodes']
 
@@ -371,7 +373,7 @@ def main():
     # simulate
     subparser_simulate = subparsers.add_parser('simulate')
     subparser_simulate.add_argument('schema', type=str)
-    # subparser_simulate.add_argument('simulation_id', type=str)
+    subparser_simulate.add_argument('algorithm', type=str)
     # subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
     subparser_simulate.set_defaults(func=simulate)
 

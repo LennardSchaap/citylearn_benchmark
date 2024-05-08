@@ -8,7 +8,7 @@ import pandas as pd
 from citylearn.data import DataSet
 from citylearn.utilities import read_json, write_json
 
-def get_combined_data(key):
+def get_combined_data(key, folder):
     settings = get_settings()
     simulation_output_directory = settings['simulation_output_directory']
     print(simulation_output_directory)
@@ -17,16 +17,20 @@ def get_combined_data(key):
     if key == 'kpi':
         # environment
         for d in os.listdir(simulation_output_directory):
-            if 'resstock' in d:
+            if folder in d:
                 simulation_id = d
                 d = os.path.join(simulation_output_directory, d)
                 data = pd.read_csv(os.path.join(d, f'{simulation_id}-{key}.csv'))
-                print(data)
+                # print(data)
                 data['neighborhood'] = data['simulation_id'].str.split('_', expand=True)[0]
-                print(data['neighborhood'])
-                print(data['simulation_id'])
+                # print(data['neighborhood'])
+                # print(data['simulation_id'])
                 data['resstock_bldg_id'] = data['name'].str.split('-', expand=True)[5]
-                print(data['resstock_bldg_id'])
+
+                # Dirty hack
+                data['level'] = data['name'].map(lambda x: 'district' if x == 'District' else 'building')
+                
+                # print(data['resstock_bldg_id'])
                 data.loc[data['mode']=='test', 'episode'] = data['episode'].max() + 1
 
                 if 'timestamp' in data.columns:
@@ -44,19 +48,21 @@ def get_combined_data(key):
     else:
         # environment
         for d in os.listdir(simulation_output_directory):
-            if 'resstock' in d:
-                print(d)
-                exit()
+            if folder in d:
+                # print(d)
                 simulation_id = d
                 d = os.path.join(simulation_output_directory, d)
                 data = pd.read_csv(os.path.join(d, f'{simulation_id}-{key}.csv'))
-                print(data)
+                # print(data)
                 data['neighborhood'] = data['simulation_id'].str.split('_', expand=True)[0]
-                print(data['neighborhood'])
-                print(data['simulation_id'])
-                print(data['building_name'])
+                # print(data['neighborhood'])
+                # print(data['simulation_id'])
+                # print(data['building_name'])
                 data['resstock_bldg_id'] = data['building_name'].str.split('-', expand=True)[5]
-                print(data['resstock_bldg_id'])
+
+
+
+                # print(data['resstock_bldg_id'])
                 data.loc[data['mode']=='test', 'episode'] = data['episode'].max() + 1
 
                 if 'timestamp' in data.columns:
@@ -82,6 +88,7 @@ def set_schema(**kwargs):
     district_directory = os.path.join(settings['neighborhood_directory'], kwargs['district_name'])
     schema = DataSet.get_schema('citylearn_challenge_2021')
     schema['simulation_id'] = kwargs['simulation_id']
+
     # schema['root_directory'] = district_directory
     schema['root_directory'] = None
     schema['central_agent'] = settings['central_agent']
