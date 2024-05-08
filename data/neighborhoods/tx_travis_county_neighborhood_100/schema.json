@@ -1,11 +1,9 @@
 {
   "root_directory": null,
   "central_agent": false,
-  "simulation_start_time_step": 0,
-  "simulation_end_time_step": 8760,
-  "episode_time_steps": null,
-  "rolling_episode_split": false,
-  "random_episode_split": false,
+  "simulation_start_time_step": 3624,
+  "simulation_end_time_step": 5087,
+  "episodes": 15,
   "seconds_per_time_step": 3600.0,
   "observations": {
     "month": {
@@ -175,9 +173,9 @@
       "lr": 0.0003,
       "batch_size": 256,
       "replay_buffer_capacity": 100000.0,
-      "start_training_time_step": 8760,
-      "end_exploration_time_step": 8761,
-      "deterministic_start_time_step": 122654,
+      "start_training_time_step": 1463,
+      "end_exploration_time_step": 1464,
+      "deterministic_start_time_step": 20496,
       "action_scaling_coef": 0.5,
       "reward_scaling": 5.0,
       "update_per_time_step": 2,
@@ -9793,5 +9791,5 @@
     }
   },
   "simulation_id": "travis",
-  "episodes": 15
+  "season": "summer"
 }

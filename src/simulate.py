@@ -39,10 +39,10 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
-    "log_to_wandb" : True,
+    "log_to_wandb" : False,
     "model" : "SAC",
-    "episodes" : 60,
-    "version" : "60_eps_custom_rew"
+    "episodes" : 200,
+    "version" : "200_eps"
 }
 
 def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
@@ -87,9 +87,9 @@ def simulate(**kwargs):
 
     building_name = ""
     schema['episodes'] = training_config['episodes']
-    schema['reward_function'] = {
-        "type": "reward_function.CustomReward",
-    }
+    # schema['reward_function'] = {
+    #     "type": "reward_function.CustomReward",
+    # }
 
     # set buildings
     if kwargs.get('building', None) is not None:
