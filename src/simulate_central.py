@@ -40,10 +40,11 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
-    "log_to_wandb" : False,
+    "log_to_wandb" : True,
     "model" : "",
-    "episodes" : 600,
-    "version" : "600_eps"
+    "episodes" : 300,
+    "version" : "300_eps",
+    "buildings" : "5_buildings"
 }
 
 def simulate(**kwargs):
@@ -113,7 +114,7 @@ def simulate(**kwargs):
         model_class = DDPG
 
     if training_config["log_to_wandb"]:
-        project_name ="sb3_central" 
+        project_name = "sb3_central" + "_" + training_config["buildings"]
         run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + training_config["version"] )
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
         callbacks.append(wandb_callback)
