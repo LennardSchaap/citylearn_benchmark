@@ -1,4 +1,3 @@
-
 python "/home/s1914839/benchmark/src/simulate.py" simulate "/home/s1914839/benchmark/data/neighborhoods/tx_travis_county_neighborhood_10/schema.json" travis_resstock-amy2018-2021-release-1-18098 -b resstock-amy2018-2021-release-1-18098
 python "/home/s1914839/benchmark/src/simulate.py" simulate "/home/s1914839/benchmark/data/neighborhoods/tx_travis_county_neighborhood_10/schema.json" travis_resstock-amy2018-2021-release-1-24194 -b resstock-amy2018-2021-release-1-24194
 python "/home/s1914839/benchmark/src/simulate.py" simulate "/home/s1914839/benchmark/data/neighborhoods/tx_travis_county_neighborhood_10/schema.json" travis_resstock-amy2018-2021-release-1-27020 -b resstock-amy2018-2021-release-1-27020

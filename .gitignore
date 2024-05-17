@@ -5,3 +5,5 @@ home/
 runs/
 tensorboard_logs/
 wandb/
+workflow/work_order/
+src/__pycache__/
