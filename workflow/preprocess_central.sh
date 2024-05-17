@@ -1,4 +1,4 @@
-#!/bin/sh
+  #!/bin/sh
 
 NUM_BUILDINGS="$1"
 ALGORITHM="$2"

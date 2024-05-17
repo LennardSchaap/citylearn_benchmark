@@ -26,7 +26,7 @@ def get_combined_data(key, folder):
                 # print(data['neighborhood'])
                 # print(data['simulation_id'])
                 data['resstock_bldg_id'] = data['name'].str.split('-', expand=True)[5]
-
+                print(data['resstock_bldg_id'])
                 # Dirty hack
                 data['level'] = data['name'].map(lambda x: 'district' if x == 'District' else 'building')
                 
