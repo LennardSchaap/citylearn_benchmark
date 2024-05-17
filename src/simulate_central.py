@@ -19,7 +19,7 @@ import pandas as pd
 from citylearn.citylearn import CityLearnEnv
 from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
 from citylearn.utilities import read_json
-from preprocess import get_settings, get_timestamps
+from preprocess_central import get_settings, get_timestamps
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.callbacks import ProgressBarCallback
@@ -40,7 +40,7 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
-    "log_to_wandb" : False,
+    "log_to_wandb" : True,
     "model" : "",
     "episodes" : 600,
     "version" : "600_eps"
@@ -49,6 +49,7 @@ training_config = {
 def simulate(**kwargs):
 
     settings = get_settings()
+    print(settings)
     timestamps = get_timestamps()
     schema = kwargs['schema']
     schema = read_json(os.path.join(settings['schema_directory'], schema))
@@ -113,7 +114,7 @@ def simulate(**kwargs):
         model_class = DDPG
 
     if training_config["log_to_wandb"]:
-        project_name ="sb3_central" 
+        project_name ="sb3_central_50_buildings" 
         run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + training_config["version"] )
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
         callbacks.append(wandb_callback)
