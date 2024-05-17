@@ -11,6 +11,14 @@ from stable_baselines3.sac import SAC
 from stable_baselines3.ppo import PPO
 from stable_baselines3.td3 import TD3
 from stable_baselines3.ddpg import DDPG
+
+#RPPO
+from sb3_contrib import RecurrentPPO
+from stable_baselines3.common.evaluation import evaluate_policy
+
+#Frame-stack
+from stable_baselines3.common.vec_env import VecFrameStack
+
 from stable_baselines3.common.callbacks import BaseCallback
 import sys
 from multiprocessing import cpu_count
@@ -19,13 +27,10 @@ import pandas as pd
 from citylearn.citylearn import CityLearnEnv
 from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
 from citylearn.utilities import read_json
-from preprocess import get_settings, get_timestamps
+from preprocess_central import get_settings, get_timestamps
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.callbacks import ProgressBarCallback
-
-
-#TEST
 
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -44,12 +49,17 @@ training_config = {
     "model" : "",
     "episodes" : 300,
     "version" : "300_eps",
-    "buildings" : "5_buildings"
+    "buildings" : "10_buildings_battery_only",
+    "frame-stack-ppo" : False,
+    "n_stack" : 4,
+    "use_dhw_storage" : True,
+    "use_electrical_storage" : False
 }
 
 def simulate(**kwargs):
 
     settings = get_settings()
+    print(settings)
     timestamps = get_timestamps()
     schema = kwargs['schema']
     schema = read_json(os.path.join(settings['schema_directory'], schema))
@@ -60,6 +70,9 @@ def simulate(**kwargs):
     training_config["model"] = algo
 
     schema['episodes'] = training_config['episodes']
+
+    schema['actions']['dhw_storage']['active'] = training_config["use_dhw_storage"]
+    schema['actions']['electrical_storage']['active'] = training_config["use_electrical_storage"]
 
     # set buildings
     if kwargs.get('building', None) is not None:
@@ -95,28 +108,42 @@ def simulate(**kwargs):
     episodes = env.unwrapped.schema['episodes']
     total_timesteps=(env.unwrapped.time_steps)*episodes
 
-    config = {
-        "policy_type": "MlpPolicy",
-        "total_timesteps": total_timesteps,
-        "env_name": "CityLearn",
-    }
+
 
     save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
     callbacks = [save_data_callback]
 
+    policy_type = "MlpPolicy"
+
     if training_config["model"] == "PPO":
         model_class = PPO
+        if training_config["frame-stack-ppo"]:
+            env = make_train_env(env)
+            env = VecFrameStack(env, training_config["n_stack"])
     elif training_config["model"] == "SAC":
         model_class = SAC
     elif training_config["model"] == "TD3":
         model_class = TD3
     elif training_config["model"] == "DDPG":
         model_class = DDPG
+    elif training_config["model"] == "RPPO":
+        model_class = RecurrentPPO
+        policy_type = "MlpLstmPolicy"
+
+    config = {
+        "policy_type": policy_type,
+        "total_timesteps": total_timesteps,
+        "env_name": "CityLearn",
+    }
 
     if training_config["log_to_wandb"]:
         project_name = "sb3_central" + "_" + training_config["buildings"]
+
+        if training_config["use_dhw_storage"] == False:
+            project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
+
         run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + training_config["version"] )
-        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
+        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=0)
         callbacks.append(wandb_callback)
         model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
     else:
@@ -217,6 +244,11 @@ class SaveDataCallback(BaseCallback):
                 losses_dict = {
                     "actor_loss": self.model.logger.name_to_value['train/actor_loss'],
                     "critic_loss": self.model.logger.name_to_value['train/critic_loss']
+                }
+            elif training_config["model"] == "RPPO":
+                losses_dict = {
+                    "policy_gradient_loss": self.model.logger.name_to_value['train/policy_gradient_loss'],
+                    "value_loss": self.model.logger.name_to_value['train/value_loss']
                 }
 
             log_data = {

@@ -312,7 +312,9 @@ def get_settings():
     settings_filepath = os.path.join(src_directory, 'settings.json')
     settings = read_json(settings_filepath)
     settings['root_directory'] = os.path.join(*Path(os.path.dirname(__file__)).absolute().parts[0:-1])
+
     settings['data_directory'] = os.path.join(settings['root_directory'], '../data/data')
+
     settings['src_directory'] = os.path.join(settings['root_directory'], 'src')
     settings['work_order_directory'] = os.path.join(settings['root_directory'], 'workflow', 'work_order')
     settings['simulation_output_directory'] = os.path.join(settings['data_directory'], 'simulation_output')
@@ -325,7 +327,7 @@ def get_settings():
     os.makedirs(settings['work_order_directory'], exist_ok=True)
     os.makedirs(settings['simulation_output_directory'], exist_ok=True)
     os.makedirs(settings['figures_directory'], exist_ok=True)
-    # os.makedirs(settings['schema_directory'], exist_ok=True)
+    os.makedirs(settings['schema_directory'], exist_ok=True)
     os.makedirs(settings['sizing_directory'], exist_ok=True)
     
     return settings

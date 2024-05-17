@@ -1,0 +1,8 @@
+data/
+figures/
+models/
+home/
+runs/
+tensorboard_logs/
+wandb/
+workflow/work_order/

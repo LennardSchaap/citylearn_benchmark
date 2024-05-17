@@ -41,8 +41,9 @@ LOGGER.setLevel(logging.DEBUG)
 training_config = {
     "log_to_wandb" : True,
     "model" : "SAC",
-    "episodes" : 20,
-    "version" : "20_eps"
+    "episodes" : 30,
+    "version" : "30_eps",
+    # "cpu_count" : 32
 }
 
 def run_work_order(work_order_filepath, conda_environment="benv", windows_system=None):
@@ -62,8 +63,9 @@ def run_work_order(work_order_filepath, conda_environment="benv", windows_system
 
     args = args.strip('\n').split('\n')
     args = [f'{conda_activate_command} && {a}' for a in args]
-    #max_workers = settings.get('max_workers', None) or os.cpu_count()
-    max_workers = min(settings.get('max_workers', None) or os.cpu_count(), 8)
+
+    max_workers = settings.get('max_workers', None) or os.cpu_count()
+    # max_workers = min(settings.get('max_workers', None) or os.cpu_count(), training_config['cpu_count'])
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         print(f'Will use {max_workers} workers for job.')
@@ -111,6 +113,7 @@ def run_work_order(work_order_filepath, conda_environment="benv", windows_system
 
 def simulate(**kwargs):
     settings = get_settings()
+
     timestamps = get_timestamps()
     schema = kwargs['schema']
     schema = read_json(os.path.join(settings['schema_directory'], schema))
@@ -176,7 +179,7 @@ def simulate(**kwargs):
     if training_config["log_to_wandb"]:
         project_name ="sb3_independent_" + training_config["model"] + "_" + training_config["version"]
         run = wandb.init(project=project_name, name=building_name, config=config)
-        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=2)
+        wandb_callback = WandbCallback(verbose=2)
         callbacks.append(wandb_callback)
         model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
     else:
