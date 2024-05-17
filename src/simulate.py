@@ -38,31 +38,44 @@ warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-training_config = {
-    "log_to_wandb" : False,
-    "model" : "SAC",
-    "episodes" : 30,
-    "version" : "30_eps",
-    # "cpu_count" : 32
-}
+import json
 
-def run_work_order(work_order_filepath, conda_environment="benv", windows_system=None):
+def load_config(file_name='training_config.json'):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, file_name)
+
+    with open(file_path, 'r') as file:
+        config = json.load(file)
+    return config
+
+training_config = load_config()  
+
+def run_work_order(work_order_filepath, windows_system=None):
     settings = get_settings()
     work_order_filepath = Path(work_order_filepath)
 
-    if conda_environment:
+    virtual_environment_path = training_config["virtual_environment_path"]
+    conda_environment = training_config["conda_environment"]
+
+    if virtual_environment_path: 
         if windows_system:
-            conda_activate_command = f'cmd.exe /C "conda activate {conda_environment}"'
+            command = f'"{os.path.join(virtual_environment_path, "Scripts", "Activate.ps1")}"'
         else:
-            conda_activate_command = f'eval "$(conda shell.bash hook)" && conda activate {conda_environment}'
+            command = f'source "{os.path.join(virtual_environment_path, "bin", "activate")}"'
+
+    elif conda_environment:
+        if windows_system:
+            command = f'cmd.exe /C "conda activate {conda_environment}"'
+        else:
+            command = f'eval "$(conda shell.bash hook)" && conda activate {conda_environment}'
     else:
-        conda_activate_command = 'echo "No virtual environment"'
+        print("No environment found")
 
     with open(work_order_filepath, mode='r') as f:
         args = f.read()
 
     args = args.strip('\n').split('\n')
-    args = [f'{conda_activate_command} && {a}' for a in args]
+    args = [f'{command} && {a}' for a in args]
     max_workers = settings.get('max_workers', None) or os.cpu_count()
     # max_workers = min(settings.get('max_workers', None) or os.cpu_count(), training_config['cpu_count'])
 
@@ -133,23 +146,23 @@ def simulate(**kwargs):
     save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
     callbacks = [save_data_callback]
 
-    if training_config["model"] == "PPO":
+    if training_config["algorithm"] == "PPO":
         model_class = PPO
-    elif training_config["model"] == "SAC":
+    elif training_config["algorithm"] == "SAC":
         model_class = SAC
-    elif training_config["model"] == "DDPG":
+    elif training_config["algorithm"] == "DDPG":
         model_class = DDPG
-    elif training_config["model"] == "TD3":
+    elif training_config["algorithm"] == "TD3":
         model_class = TD3
 
     if training_config["log_to_wandb"]:
-        project_name ="sb3_independent_" + training_config["model"] + "_" + training_config["version"]
+        project_name ="sb3_independent_" + training_config["algorithm"] + "_" + training_config["version"]
         run = wandb.init(project=project_name, name=building_name, config=config)
         wandb_callback = WandbCallback(verbose=2)
         callbacks.append(wandb_callback)
-        model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
+        model = model_class(config["policy_type"], env, verbose=0, tensorboard_log=f"runs/{run.id}")
     else:
-        model = model_class(config["policy_type"], env, verbose=2)
+        model = model_class(config["policy_type"], env, verbose=0)
 
     # Train the model
     model.learn(total_timesteps=config["total_timesteps"], callback=callbacks)
@@ -238,11 +251,11 @@ class SaveDataCallback(BaseCallback):
 
             losses_dict = {}
 
-            if training_config["model"] == "PPO":
+            if training_config["algorithm"] == "PPO":
                 losses_dict = {
                     "loss": self.model.logger.name_to_value['train/loss']
                 }
-            elif training_config["model"] == "SAC" or training_config["model"] == "DDPG":
+            elif training_config["algorithm"] == "SAC" or training_config["algorithm"] == "DDPG":
                 losses_dict = {
                     "actor_loss": self.model.logger.name_to_value['train/actor_loss'],
                     "critic_loss": self.model.logger.name_to_value['train/critic_loss']

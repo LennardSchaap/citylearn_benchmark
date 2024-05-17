@@ -7,6 +7,17 @@ import sys
 import pandas as pd
 from citylearn.data import DataSet
 from citylearn.utilities import read_json, write_json
+import json
+
+def load_config(file_name='training_config.json'):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, file_name)
+
+    with open(file_path, 'r') as file:
+        config = json.load(file)
+    return config
+
+training_config = load_config()
 
 def get_combined_data(key, folder):
     settings = get_settings()
@@ -321,7 +332,7 @@ def get_settings():
     settings_filepath = os.path.join(src_directory, 'settings.json')
     settings = read_json(settings_filepath)
     settings['root_directory'] = os.path.join(*Path(os.path.dirname(__file__)).absolute().parts[0:-1])
-    settings['data_directory'] = os.path.join(settings['root_directory'], '../data1/data')
+    settings['data_directory'] = training_config['data_directory']
     settings['src_directory'] = os.path.join(settings['root_directory'], 'src')
     settings['work_order_directory'] = os.path.join(settings['root_directory'], 'workflow', 'work_order')
     settings['simulation_output_directory'] = os.path.join(settings['data_directory'], 'simulation_output')

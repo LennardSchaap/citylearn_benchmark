@@ -44,22 +44,21 @@ warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-training_config = {
-    "log_to_wandb" : True,
-    "model" : "",
-    "episodes" : 300,
-    "version" : "300_eps",
-    "buildings" : "10_buildings_battery_only",
-    "frame-stack-ppo" : False,
-    "n_stack" : 4,
-    "use_dhw_storage" : True,
-    "use_electrical_storage" : False
-}
+import json
+
+def load_config(file_name='training_config.json'):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, file_name)
+
+    with open(file_path, 'r') as file:
+        config = json.load(file)
+    return config
+
+training_config = load_config()
 
 def simulate(**kwargs):
 
     settings = get_settings()
-    print(settings)
     timestamps = get_timestamps()
     schema = kwargs['schema']
     schema = read_json(os.path.join(settings['schema_directory'], schema))
@@ -87,8 +86,7 @@ def simulate(**kwargs):
     
     # set simulation output path
     simulation_output_path = os.path.join(settings['simulation_output_directory'], simulation_id)
-    print(simulation_output_path)
-
+    
     if os.path.isdir(simulation_output_path):
         shutil.rmtree(simulation_output_path)
     else:
@@ -107,8 +105,6 @@ def simulate(**kwargs):
     # Wandb testing
     episodes = env.unwrapped.schema['episodes']
     total_timesteps=(env.unwrapped.time_steps)*episodes
-
-
 
     save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
     callbacks = [save_data_callback]

@@ -224,9 +224,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 19.79268644080608,
-          "max_input_power": 0.2574551789857126,
-          "max_output_power": 0.2574551789857126,
+          "capacity": 14.685359376241436,
+          "max_input_power": 0.1987169186451208,
+          "max_output_power": 0.1987169186451208,
           "loss_coefficient": 0.003
         }
       },
@@ -320,9 +320,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 16.42326545981137,
-          "max_input_power": 0.1248390076484241,
-          "max_output_power": 0.1248390076484241,
+          "capacity": 12.789102380533915,
+          "max_input_power": 0.1046346089857002,
+          "max_output_power": 0.1046346089857002,
           "loss_coefficient": 0.003
         }
       },
@@ -416,9 +416,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 17.13432501905133,
-          "max_input_power": 0.1169304745761765,
-          "max_output_power": 0.1169304745761765,
+          "capacity": 6.874025259754591,
+          "max_input_power": 0.1028819646973751,
+          "max_output_power": 0.1028819646973751,
           "loss_coefficient": 0.003
         }
       },
@@ -512,9 +512,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 10.723133401189212,
-          "max_input_power": 0.0759000467724001,
-          "max_output_power": 0.0759000467724001,
+          "capacity": 7.826939479486622,
+          "max_input_power": 0.0610291033698399,
+          "max_output_power": 0.0610291033698399,
           "loss_coefficient": 0.003
         }
       },
@@ -608,9 +608,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 12.855050492039336,
-          "max_input_power": 0.0961761989014098,
-          "max_output_power": 0.0961761989014098,
+          "capacity": 6.974775389527884,
+          "max_input_power": 0.0780477452181677,
+          "max_output_power": 0.0780477452181677,
           "loss_coefficient": 0.003
         }
       },
@@ -704,9 +704,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 12.211239081589596,
-          "max_input_power": 0.1243019474108383,
-          "max_output_power": 0.1243019474108383,
+          "capacity": 7.514422870283684,
+          "max_input_power": 0.0860349350081115,
+          "max_output_power": 0.0860349350081115,
           "loss_coefficient": 0.003
         }
       },
@@ -800,9 +800,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 22.44518779269865,
-          "max_input_power": 0.3389415831290736,
-          "max_output_power": 0.3389415831290736,
+          "capacity": 18.84802682836578,
+          "max_input_power": 0.2813592432012134,
+          "max_output_power": 0.2813592432012134,
           "loss_coefficient": 0.003
         }
       },
@@ -896,9 +896,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 5.957502957356369,
-          "max_input_power": 0.0531656016460348,
-          "max_output_power": 0.0531656016460348,
+          "capacity": 3.7573417485064575,
+          "max_input_power": 0.0376817031077416,
+          "max_output_power": 0.0376817031077416,
           "loss_coefficient": 0.003
         }
       },
@@ -992,105 +992,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 32.41290784794147,
-          "max_input_power": 0.2485571671200385,
-          "max_output_power": 0.2485571671200385,
-          "loss_coefficient": 0.003
-        }
-      },
-      "electrical_storage": {
-        "type": "citylearn.energy_model.Battery",
-        "autosize": false,
-        "attributes": {
-          "capacity": 13.5,
-          "efficiency": 0.9,
-          "capacity_loss_coefficient": 1e-05,
-          "loss_coefficient": null,
-          "nominal_power": 2.5,
-          "power_efficiency_curve": [
-            [
-              0,
-              0.83
-            ],
-            [
-              0.3,
-              0.83
-            ],
-            [
-              0.7,
-              0.9
-            ],
-            [
-              0.8,
-              0.9
-            ],
-            [
-              1,
-              0.85
-            ]
-          ],
-          "capacity_power_curve": [
-            [
-              0.0,
-              1.0
-            ],
-            [
-              0.8,
-              0.9
-            ],
-            [
-              1.0,
-              0.27
-            ]
-          ]
-        }
-      },
-      "pv": {
-        "type": "citylearn.energy_model.PV",
-        "autosize": false,
-        "attributes": {
-          "nominal_power": 10.0
-        }
-      }
-    },
-    "resstock-amy2018-2021-release-1-6887": {
-      "include": true,
-      "energy_simulation": "resstock-amy2018-2021-release-1-6887.csv",
-      "weather": "weather.csv",
-      "carbon_intensity": null,
-      "pricing": null,
-      "cooling_device": {
-        "type": "citylearn.energy_model.HeatPump",
-        "autosize": true,
-        "attributes": {
-          "nominal_power": null,
-          "efficiency": 0.2,
-          "target_cooling_temperature": 8.0
-        }
-      },
-      "heating_device": {
-        "type": "citylearn.energy_model.HeatPump",
-        "autosize": true,
-        "attributes": {
-          "nominal_power": null,
-          "efficiency": 0.2,
-          "target_heating_temperature": 45.0
-        }
-      },
-      "dhw_device": {
-        "type": "citylearn.energy_model.ElectricHeater",
-        "autosize": true,
-        "attributes": {
-          "nominal_power": null,
-          "efficiency": 0.9
-        }
-      },
-      "dhw_storage": {
-        "type": "citylearn.energy_model.StorageTank",
-        "attributes": {
-          "capacity": 14.879605905183457,
-          "max_input_power": 0.194263424274943,
-          "max_output_power": 0.194263424274943,
+          "capacity": 21.18010875194368,
+          "max_input_power": 0.2305219611885322,
+          "max_output_power": 0.2305219611885322,
           "loss_coefficient": 0.003
         }
       },
@@ -1150,6 +1054,6 @@
       }
     }
   },
-  "simulation_id": "tx_travis_county_neighborhood_10_SAC",
+  "simulation_id": "tx_travis_county_neighborhood_10_PPO",
   "season": "summer"
 }

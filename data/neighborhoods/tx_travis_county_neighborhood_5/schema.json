@@ -1,9 +1,11 @@
 {
   "root_directory": null,
   "central_agent": false,
-  "simulation_start_time_step": 3624,
-  "simulation_end_time_step": 5087,
-  "episodes": 15,
+  "simulation_start_time_step": 0,
+  "simulation_end_time_step": 8760,
+  "episode_time_steps": null,
+  "rolling_episode_split": false,
+  "random_episode_split": false,
   "seconds_per_time_step": 3600.0,
   "observations": {
     "month": {
@@ -173,9 +175,9 @@
       "lr": 0.0003,
       "batch_size": 256,
       "replay_buffer_capacity": 100000.0,
-      "start_training_time_step": 1463,
-      "end_exploration_time_step": 1464,
-      "deterministic_start_time_step": 20496,
+      "start_training_time_step": 8760,
+      "end_exploration_time_step": 8761,
+      "deterministic_start_time_step": 122654,
       "action_scaling_coef": 0.5,
       "reward_scaling": 5.0,
       "update_per_time_step": 2,
@@ -224,9 +226,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 19.79268644080608,
-          "max_input_power": 0.2574551789857126,
-          "max_output_power": 0.2574551789857126,
+          "capacity": 14.685359376241436,
+          "max_input_power": 0.1987169186451208,
+          "max_output_power": 0.1987169186451208,
           "loss_coefficient": 0.003
         }
       },
@@ -320,9 +322,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 16.42326545981137,
-          "max_input_power": 0.1248390076484241,
-          "max_output_power": 0.1248390076484241,
+          "capacity": 12.789102380533915,
+          "max_input_power": 0.1046346089857002,
+          "max_output_power": 0.1046346089857002,
           "loss_coefficient": 0.003
         }
       },
@@ -416,9 +418,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 17.13432501905133,
-          "max_input_power": 0.1169304745761765,
-          "max_output_power": 0.1169304745761765,
+          "capacity": 6.874025259754591,
+          "max_input_power": 0.1028819646973751,
+          "max_output_power": 0.1028819646973751,
           "loss_coefficient": 0.003
         }
       },
@@ -512,9 +514,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 22.44518779269865,
-          "max_input_power": 0.3389415831290736,
-          "max_output_power": 0.3389415831290736,
+          "capacity": 18.84802682836578,
+          "max_input_power": 0.2813592432012134,
+          "max_output_power": 0.2813592432012134,
           "loss_coefficient": 0.003
         }
       },
@@ -608,9 +610,9 @@
       "dhw_storage": {
         "type": "citylearn.energy_model.StorageTank",
         "attributes": {
-          "capacity": 14.879605905183457,
-          "max_input_power": 0.194263424274943,
-          "max_output_power": 0.194263424274943,
+          "capacity": 9.90338875567811,
+          "max_input_power": 0.1286429073999538,
+          "max_output_power": 0.1286429073999538,
           "loss_coefficient": 0.003
         }
       },
@@ -670,6 +672,6 @@
       }
     }
   },
-  "simulation_id": "tx_travis_county_neighborhood_5_SAC",
-  "season": "summer"
+  "simulation_id": "travis",
+  "episodes": 15
 }
