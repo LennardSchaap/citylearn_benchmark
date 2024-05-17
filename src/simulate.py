@@ -39,43 +39,75 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
-    "log_to_wandb" : False,
+    "log_to_wandb" : True,
     "model" : "SAC",
-    "episodes" : 200,
-    "version" : "200_eps"
+    "episodes" : 20,
+    "version" : "20_eps"
 }
 
-def run_work_order(work_order_filepath, virtual_environment_path="/home/wortel/Documents/citylearn_benchmark/benv", windows_system=None):
-
+def run_work_order(work_order_filepath, conda_environment="benv", windows_system=None):
     settings = get_settings()
     work_order_filepath = Path(work_order_filepath)
 
-    if virtual_environment_path is not None:    
+    if conda_environment:
         if windows_system:
-            virtual_environment_command = f'"{os.path.join(virtual_environment_path, "Scripts", "Activate.ps1")}"'
+            conda_activate_command = f'cmd.exe /C "conda activate {conda_environment}"'
         else:
-            virtual_environment_command = f'source "{os.path.join(virtual_environment_path, "bin", "activate")}"'
+            conda_activate_command = f'eval "$(conda shell.bash hook)" && conda activate {conda_environment}'
     else:
-        virtual_environment_command = 'echo "No virtual environment"'
+        conda_activate_command = 'echo "No virtual environment"'
 
-    with open(work_order_filepath,mode='r') as f:
+    with open(work_order_filepath, mode='r') as f:
         args = f.read()
-    
+
     args = args.strip('\n').split('\n')
-    args = [f'{virtual_environment_command} && {a}' for a in args]
-    settings = get_settings()
-    max_workers = settings['max_workers'] if settings.get('max_workers',None) is not None else cpu_count()
-    
+    args = [f'{conda_activate_command} && {a}' for a in args]
+    #max_workers = settings.get('max_workers', None) or os.cpu_count()
+    max_workers = min(settings.get('max_workers', None) or os.cpu_count(), 8)
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         print(f'Will use {max_workers} workers for job.')
         print(f'Pooling {len(args)} jobs to run in parallel...')
-        results = [executor.submit(subprocess.run,**{'args':a, 'shell':True}) for a in args]
-            
+        results = [executor.submit(subprocess.run, **{'args': a, 'shell': True}) for a in args]
+
         for future in concurrent.futures.as_completed(results):
             try:
                 print(future.result())
             except Exception as e:
                 print(e)
+
+
+# def run_work_order(work_order_filepath, virtual_environment_path="/home/s1914839/data/conda/envs/benv", windows_system=None):
+
+#     settings = get_settings()
+#     work_order_filepath = Path(work_order_filepath)
+
+#     if virtual_environment_path is not None:    
+#         if windows_system:
+#             virtual_environment_command = f'"{os.path.join(virtual_environment_path, "Scripts", "Activate.ps1")}"'
+#         else:
+#             virtual_environment_command = f'source "{os.path.join(virtual_environment_path, "bin", "activate")}"'
+#     else:
+#         virtual_environment_command = 'echo "No virtual environment"'
+
+#     with open(work_order_filepath,mode='r') as f:
+#         args = f.read()
+    
+#     args = args.strip('\n').split('\n')
+#     args = [f'{virtual_environment_command} && {a}' for a in args]
+#     settings = get_settings()
+#     max_workers = settings['max_workers'] if settings.get('max_workers',None) is not None else cpu_count()
+    
+#     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+#         print(f'Will use {max_workers} workers for job.')
+#         print(f'Pooling {len(args)} jobs to run in parallel...')
+#         results = [executor.submit(subprocess.run,**{'args':a, 'shell':True}) for a in args]
+            
+#         for future in concurrent.futures.as_completed(results):
+#             try:
+#                 print(future.result())
+#             except Exception as e:
+#                 print(e)
 
 def simulate(**kwargs):
     settings = get_settings()
