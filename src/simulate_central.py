@@ -59,6 +59,7 @@ training_config = {
 def simulate(**kwargs):
 
     settings = get_settings()
+    print(settings)
     timestamps = get_timestamps()
     schema = kwargs['schema']
     schema = read_json(os.path.join(settings['schema_directory'], schema))
@@ -137,8 +138,10 @@ def simulate(**kwargs):
 
     if training_config["log_to_wandb"]:
         project_name = "sb3_central" + "_" + training_config["buildings"]
+
         if training_config["use_dhw_storage"] == False:
             project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
+
         run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + training_config["version"] )
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=0)
         callbacks.append(wandb_callback)
