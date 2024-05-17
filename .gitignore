@@ -1,0 +1,7 @@
+data/
+figures/
+models/
+home/
+runs/
+tensorboard_logs/
+wandb/

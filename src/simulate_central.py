@@ -27,7 +27,7 @@ import pandas as pd
 from citylearn.citylearn import CityLearnEnv
 from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
 from citylearn.utilities import read_json
-from preprocess import get_settings, get_timestamps
+from preprocess_central import get_settings, get_timestamps
 import wandb
 from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.callbacks import ProgressBarCallback
@@ -45,13 +45,15 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
 training_config = {
-    "log_to_wandb" : False,
+    "log_to_wandb" : True,
     "model" : "",
     "episodes" : 300,
     "version" : "300_eps",
-    "buildings" : "5_buildings",
+    "buildings" : "10_buildings_battery_only",
     "frame-stack-ppo" : False,
-    "n_stack" : 4
+    "n_stack" : 4,
+    "use_dhw_storage" : True,
+    "use_electrical_storage" : False
 }
 
 def simulate(**kwargs):
@@ -67,6 +69,9 @@ def simulate(**kwargs):
     training_config["model"] = algo
 
     schema['episodes'] = training_config['episodes']
+
+    schema['actions']['dhw_storage']['active'] = training_config["use_dhw_storage"]
+    schema['actions']['electrical_storage']['active'] = training_config["use_electrical_storage"]
 
     # set buildings
     if kwargs.get('building', None) is not None:
@@ -132,6 +137,8 @@ def simulate(**kwargs):
 
     if training_config["log_to_wandb"]:
         project_name = "sb3_central" + "_" + training_config["buildings"]
+        if training_config["use_dhw_storage"] == False:
+            project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
         run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + training_config["version"] )
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=0)
         callbacks.append(wandb_callback)
