@@ -48,7 +48,10 @@ def load_config(file_name='training_config.json'):
         config = json.load(file)
     return config
 
-training_config = load_config()  
+training_config = load_config()
+
+os.environ["WANDB_MODE"] = "offline"
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 def run_work_order(work_order_filepath, windows_system=None):
     settings = get_settings()
@@ -91,39 +94,6 @@ def run_work_order(work_order_filepath, windows_system=None):
             except Exception as e:
                 print(e)
 
-
-# def run_work_order(work_order_filepath, virtual_environment_path="/home/s1914839/data/conda/envs/benv", windows_system=None):
-
-#     settings = get_settings()
-#     work_order_filepath = Path(work_order_filepath)
-
-#     if virtual_environment_path is not None:    
-#         if windows_system:
-#             virtual_environment_command = f'"{os.path.join(virtual_environment_path, "Scripts", "Activate.ps1")}"'
-#         else:
-#             virtual_environment_command = f'source "{os.path.join(virtual_environment_path, "bin", "activate")}"'
-#     else:
-#         virtual_environment_command = 'echo "No virtual environment"'
-
-#     with open(work_order_filepath,mode='r') as f:
-#         args = f.read()
-    
-#     args = args.strip('\n').split('\n')
-#     args = [f'{virtual_environment_command} && {a}' for a in args]
-#     settings = get_settings()
-#     max_workers = settings['max_workers'] if settings.get('max_workers',None) is not None else cpu_count()
-    
-#     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-#         print(f'Will use {max_workers} workers for job.')
-#         print(f'Pooling {len(args)} jobs to run in parallel...')
-#         results = [executor.submit(subprocess.run,**{'args':a, 'shell':True}) for a in args]
-            
-#         for future in concurrent.futures.as_completed(results):
-#             try:
-#                 print(future.result())
-#             except Exception as e:
-#                 print(e)
-
 def simulate(**kwargs):
     settings = get_settings()
 
@@ -135,9 +105,6 @@ def simulate(**kwargs):
 
     building_name = ""
     schema['episodes'] = training_config['episodes']
-    # schema['reward_function'] = {
-    #     "type": "reward_function.CustomReward",
-    # }
 
     # set buildings
     if kwargs.get('building', None) is not None:
@@ -190,8 +157,8 @@ def simulate(**kwargs):
         model_class = TD3
 
     if training_config["log_to_wandb"]:
-        project_name ="sb3_independent_" + training_config["algorithm"] + "_" + training_config["version"]
-        run = wandb.init(project=project_name, name=building_name, config=config)
+        project_name ="sb3_independent_" + training_config["version"]
+        run = wandb.init(project=project_name, name=building_name, config=config, group=training_config["algorithm"])
         wandb_callback = WandbCallback(verbose=2)
         callbacks.append(wandb_callback)
         model = model_class(config["policy_type"], env, verbose=0, tensorboard_log=f"runs/{run.id}")
@@ -200,6 +167,8 @@ def simulate(**kwargs):
 
     # Train the model
     model.learn(total_timesteps=config["total_timesteps"], callback=callbacks)
+
+    wandb.finish()
 
     # evaluate
     season = schema['season']
@@ -246,6 +215,7 @@ class SaveDataCallback(BaseCallback):
         self.episode = 0
         self.start_timestamp = datetime.utcnow()
         self.mode = 'train'
+        self.log_data_accumulator = []
 
     def _on_step(self) -> bool:
         # print to log
@@ -253,7 +223,6 @@ class SaveDataCallback(BaseCallback):
             info = f'Time step: {self.env.unwrapped.time_step}/{self.env.unwrapped.time_steps - 1}, Episode: {self.episode + 1}/{self.episodes}'
             LOGGER.debug(info)
             print(info)
-
 
         # save timer data
         if self.env.time_step == self.env.time_steps - 2:
@@ -310,7 +279,7 @@ class SaveDataCallback(BaseCallback):
             }
 
             print(log_data)
-
+            
             # Log rewards, losses and KPI's to Wandb:
             if training_config["log_to_wandb"]:
                 wandb.log(log_data)
