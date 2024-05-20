@@ -51,7 +51,7 @@ def load_config(file_name='training_config.json'):
 training_config = load_config()
 
 os.environ["WANDB_MODE"] = "offline"
-os.environ["WANDB__SERVICE_WAIT"] = "300"
+os.environ["WANDB__SERVICE_WAIT"] = "1000"
 
 def run_work_order(work_order_filepath, windows_system=None):
     settings = get_settings()
@@ -144,7 +144,7 @@ def simulate(**kwargs):
         "env_name": "CityLearn",
     }
 
-    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
+    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, building_name, verbose = 2)
     callbacks = [save_data_callback]
 
     if training_config["algorithm"] == "PPO":
@@ -204,7 +204,7 @@ class SaveDataCallback(BaseCallback):
 
     :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
     """
-    def __init__(self, schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose=0):
+    def __init__(self, schema, env, simulation_id, simulation_output_path, timestamps, episodes, building_name, verbose=0):
         super(SaveDataCallback, self).__init__(verbose)
         self.schema = schema
         self.env = env
@@ -215,6 +215,7 @@ class SaveDataCallback(BaseCallback):
         self.episode = 0
         self.start_timestamp = datetime.utcnow()
         self.mode = 'train'
+        self.building_name = building_name
         self.log_data_accumulator = []
 
     def _on_step(self) -> bool:
@@ -283,11 +284,21 @@ class SaveDataCallback(BaseCallback):
             # Log rewards, losses and KPI's to Wandb:
             if training_config["log_to_wandb"]:
                 wandb.log(log_data)
+            else:
+                self.log_data_accumulator.append(log_data)
 
         else:
             pass
 
         return True
+
+    def _on_training_end(self):
+        # Save the accumulated log data to a JSON file
+        output_file_path = os.path.join(self.simulation_output_path, f'wandb_data.json')
+        print(output_file_path)
+        with open(output_file_path, 'w') as json_file:
+            json.dump(self.log_data_accumulator, json_file, indent=4)
+
 
 def save_data(schema, env, simulation_id, simulation_output_path, timestamps, start_timestamp, episode, mode):
     end_timestamp = datetime.utcnow()
