@@ -133,15 +133,15 @@ def simulate(**kwargs):
     }
 
     if training_config["log_to_wandb"]:
-        project_name = "sb3_central" + "_" + training_config["buildings"]
+        project_name = "sb3_central" + "_" + str(training_config["no_buildings"]) + "_buildings"
 
         if training_config["use_dhw_storage"] == False:
             project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
 
-        run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + training_config["version"] )
+        run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + str(training_config["episodes"]) + "_eps" )
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=0)
         callbacks.append(wandb_callback)
-        model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}")
+        model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}", device='cpu')
     else:
         model = model_class(config["policy_type"], env, verbose=2)
 
