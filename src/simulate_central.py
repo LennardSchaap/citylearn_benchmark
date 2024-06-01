@@ -12,6 +12,9 @@ from stable_baselines3.ppo import PPO
 from stable_baselines3.td3 import TD3
 from stable_baselines3.ddpg import DDPG
 
+#RBC Baseline
+from citylearn.agents.rbc import OptimizedRBC
+
 #RPPO
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -19,7 +22,11 @@ from stable_baselines3.common.evaluation import evaluate_policy
 #Frame-stack
 from stable_baselines3.common.vec_env import VecFrameStack
 
+#Custom network
+import torch as th
+
 from stable_baselines3.common.callbacks import BaseCallback
+
 import sys
 from multiprocessing import cpu_count
 import numpy as np
@@ -102,6 +109,10 @@ def simulate(**kwargs):
     env = NormalizedObservationWrapper(env)
     env = StableBaselines3Wrapper(env)
 
+    policy_kwargs = dict(activation_fn=th.nn.ReLU,
+                         net_arch=dict(pi=[training_config["neurons_per_layer"]] * training_config["n_layers"],
+                                       qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]))
+
     # Wandb testing
     episodes = env.unwrapped.schema['episodes']
     total_timesteps=(env.unwrapped.time_steps)*episodes
@@ -109,7 +120,7 @@ def simulate(**kwargs):
     save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
     callbacks = [save_data_callback]
 
-    policy_type = "MlpPolicy"
+    policy_type = training_config["policy_type"]
 
     if training_config["model"] == "PPO":
         model_class = PPO
@@ -141,9 +152,9 @@ def simulate(**kwargs):
         run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + str(training_config["episodes"]) + "_eps" )
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=0)
         callbacks.append(wandb_callback)
-        model = model_class(config["policy_type"], env, verbose=2, tensorboard_log=f"runs/{run.id}", device='cpu')
+        model = model_class(config["policy_type"], env, policy_kwargs=policy_kwargs, verbose=2, tensorboard_log=f"runs/{run.id}", device=training_config["device"])
     else:
-        model = model_class(config["policy_type"], env, verbose=2)
+        model = model_class(config["policy_type"], env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
 
     # Train the model
     model.learn(total_timesteps=config["total_timesteps"], callback=callbacks)

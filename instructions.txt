@@ -1,0 +1,5 @@
+Instructions for using a central agent:
+
+1) Set up the experiment by providing the hyperparameters in src/training_config.json
+2) Preprocess the data with : "sh preprocess_central.sh {no_buildings} {algorithm}", where {no buildings} = [5, 10, 50] and {algorithm} = [PPO, SAC, DDPG, TD3, RPPO]
+3) Start training with: "sh simulate_central.sh {no_buildings} {algorithm}"
