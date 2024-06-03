@@ -72,12 +72,8 @@ def simulate(**kwargs):
     schema = read_json(os.path.join(settings['schema_directory'], schema))
     schema['root_directory'] = os.path.split(Path(kwargs['schema']).absolute())[0]
     simulation_id = kwargs.get('simulation_id', schema['simulation_id'])
-    algo = kwargs.get('algorithm')
-
-    training_config["model"] = algo
 
     schema['episodes'] = training_config['episodes']
-
     schema['actions']['dhw_storage']['active'] = training_config["use_dhw_storage"]
     schema['actions']['electrical_storage']['active'] = training_config["use_electrical_storage"]
 
@@ -88,7 +84,6 @@ def simulate(**kwargs):
                 schema['buildings'][b]['include'] = True
             else:
                 schema['buildings'][b]['include'] = False
-
     else:
         pass
     
@@ -128,18 +123,18 @@ def simulate(**kwargs):
 
     policy_type = training_config["policy_type"]
 
-    if training_config["model"] == "PPO":
+    if training_config["algorithm"] == "PPO":
         model_class = PPO
         if training_config["frame-stack-ppo"]:
             env = make_train_env(env)
             env = VecFrameStack(env, training_config["n_stack"])
-    elif training_config["model"] == "SAC":
+    elif training_config["algorithm"] == "SAC":
         model_class = SAC
-    elif training_config["model"] == "TD3":
+    elif training_config["algorithm"] == "TD3":
         model_class = TD3
-    elif training_config["model"] == "DDPG":
+    elif training_config["algorithm"] == "DDPG":
         model_class = DDPG
-    elif training_config["model"] == "RPPO":
+    elif training_config["algorithm"] == "RPPO":
         model_class = RecurrentPPO
         policy_type = "MlpLstmPolicy"
 
@@ -159,7 +154,7 @@ def simulate(**kwargs):
         model = model_class.load(model_path, env=env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
 
         # Load the replay buffer if applicable
-        if training_config["model"] in ["PPO", "SAC", "TD3", "DDPG"] and os.path.exists(replay_buffer_path):
+        if training_config["algorithm"] in ["PPO", "SAC", "TD3", "DDPG"] and os.path.exists(replay_buffer_path):
             with open(replay_buffer_path, "rb") as file:
                 model.replay_buffer = pickle.load(file)
 
@@ -185,9 +180,9 @@ def simulate(**kwargs):
 
     if training_config["log_to_wandb"]:
         if not training_config["load_saved_model"]:
-            run = wandb.init(project=project_name, config=training_config, name=training_config["model"] + "_" + str(training_config["episodes"]) + "_eps" )
+            run = wandb.init(project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps" )
         else:
-            run = wandb.init(id = run_id, project=project_name, config=training_config, name=training_config["model"] + "_" + str(training_config["episodes"]) + "_eps", resume="must")
+            run = wandb.init(id = run_id, project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps", resume="must")
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{project_name}", verbose=0)
         callbacks.append(wandb_callback)
         if not training_config["load_saved_model"]:
@@ -197,7 +192,6 @@ def simulate(**kwargs):
             model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
 
     
-
     # Train the model
     model.learn(total_timesteps=total_timesteps, callback=callbacks)
 
