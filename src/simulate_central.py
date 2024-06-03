@@ -291,18 +291,18 @@ class SaveDataCallback(BaseCallback):
             peak_demand_values = kpi_data.loc[kpi_data['cost_function'] == 'peak_demand', 'value']
             load_factor_value = kpi_data.loc[kpi_data['cost_function'] == '1 - load_factor', 'value']
 
-            if training_config["model"] == "PPO":
+            if training_config["algorithm"] == "PPO":
                 losses_dict = {
                     "loss": self.model.logger.name_to_value['train/loss'],
                     "policy_gradient_loss" : self.model.logger.name_to_value['train/policy_gradient_loss'],
                     "value_loss" : self.model.logger.name_to_value['train/value_loss']
                 }
-            elif training_config["model"] in ["SAC", "TD3", "DDPG"]:
+            elif training_config["algorithm"] in ["SAC", "TD3", "DDPG"]:
                 losses_dict = {
                     "actor_loss": self.model.logger.name_to_value['train/actor_loss'],
                     "critic_loss": self.model.logger.name_to_value['train/critic_loss']
                 }
-            elif training_config["model"] == "RPPO":
+            elif training_config["algorithm"] == "RPPO":
                 losses_dict = {
                     "policy_gradient_loss": self.model.logger.name_to_value['train/policy_gradient_loss'],
                     "value_loss": self.model.logger.name_to_value['train/value_loss']
