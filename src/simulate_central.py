@@ -25,7 +25,9 @@ from stable_baselines3.common.vec_env import VecFrameStack
 #Custom network
 import torch as th
 
+# Stable baselines 3 callbacks
 from stable_baselines3.common.callbacks import BaseCallback
+import pickle
 
 import sys
 from multiprocessing import cpu_count
@@ -37,7 +39,6 @@ from citylearn.utilities import read_json
 from preprocess_central import get_settings, get_timestamps
 import wandb
 from wandb.integration.sb3 import WandbCallback
-from stable_baselines3.common.callbacks import ProgressBarCallback
 
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -71,12 +72,8 @@ def simulate(**kwargs):
     schema = read_json(os.path.join(settings['schema_directory'], schema))
     schema['root_directory'] = os.path.split(Path(kwargs['schema']).absolute())[0]
     simulation_id = kwargs.get('simulation_id', schema['simulation_id'])
-    algo = kwargs.get('algorithm')
-
-    training_config["model"] = algo
 
     schema['episodes'] = training_config['episodes']
-
     schema['actions']['dhw_storage']['active'] = training_config["use_dhw_storage"]
     schema['actions']['electrical_storage']['active'] = training_config["use_electrical_storage"]
 
@@ -87,7 +84,6 @@ def simulate(**kwargs):
                 schema['buildings'][b]['include'] = True
             else:
                 schema['buildings'][b]['include'] = False
-
     else:
         pass
     
@@ -117,47 +113,87 @@ def simulate(**kwargs):
     episodes = env.unwrapped.schema['episodes']
     total_timesteps=(env.unwrapped.time_steps)*episodes
 
-    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose = 2)
+    project_name = "sb3_central" + "_" + str(training_config["no_buildings"]) + "_buildings"
+    if training_config["use_dhw_storage"] == False:
+        project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
+
+    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, project_name, verbose = 2)
+
     callbacks = [save_data_callback]
 
     policy_type = training_config["policy_type"]
 
-    if training_config["model"] == "PPO":
+    if training_config["algorithm"] == "PPO":
         model_class = PPO
         if training_config["frame-stack-ppo"]:
             env = make_train_env(env)
             env = VecFrameStack(env, training_config["n_stack"])
-    elif training_config["model"] == "SAC":
+    elif training_config["algorithm"] == "SAC":
         model_class = SAC
-    elif training_config["model"] == "TD3":
+    elif training_config["algorithm"] == "TD3":
         model_class = TD3
-    elif training_config["model"] == "DDPG":
+    elif training_config["algorithm"] == "DDPG":
         model_class = DDPG
-    elif training_config["model"] == "RPPO":
+    elif training_config["algorithm"] == "RPPO":
         model_class = RecurrentPPO
         policy_type = "MlpLstmPolicy"
 
-    config = {
-        "policy_type": policy_type,
-        "total_timesteps": total_timesteps,
-        "env_name": "CityLearn",
-    }
+    # config = {
+    #     "policy_type": policy_type,
+    #     "total_timesteps": total_timesteps,
+    #     "env_name": "CityLearn",
+    # }
+
+    if training_config["load_saved_model"]:
+        save_path = training_config["data_directory"] + "/models/"
+        model_path = os.path.join(save_path, f"{project_name}")
+        replay_buffer_path = os.path.join(save_path, f"{project_name}_replay_buffer.pkl")
+        vecnormalize_path = os.path.join(save_path, f"{project_name}_vecnormalize.pkl")
+        state_path = os.path.join(save_path, f"{project_name}_state.pkl")
+
+        model = model_class.load(model_path, env=env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
+
+        # Load the replay buffer if applicable
+        if training_config["algorithm"] in ["PPO", "SAC", "TD3", "DDPG"] and os.path.exists(replay_buffer_path):
+            with open(replay_buffer_path, "rb") as file:
+                model.replay_buffer = pickle.load(file)
+
+        # Load the VecNormalize statistics if applicable
+        if os.path.exists(vecnormalize_path):
+            env = VecNormalize.load(vecnormalize_path, env)
+
+        # Load the saved training state
+        if os.path.exists(state_path):
+            with open(state_path, "rb") as file:
+                state = pickle.load(file)
+            num_timesteps = state["num_timesteps"]
+            n_calls = state["n_calls"]
+            episodes = state["episodes"]
+            run_id = state["run_id"]
+
+            # Update the callback with the current episode count
+            save_data_callback.num_timesteps = num_timesteps
+            save_data_callback.n_calls = n_calls
+            save_data_callback.episode = episodes
+            total_timesteps = total_timesteps - num_timesteps
+        print("Loaded saved model.")
 
     if training_config["log_to_wandb"]:
-        project_name = "sb3_central" + "_" + str(training_config["no_buildings"]) + "_buildings"
-
-        if training_config["use_dhw_storage"] == False:
-            project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
-
-        run = wandb.init(project=project_name, config=config, name=training_config["model"] + "_" + str(training_config["episodes"]) + "_eps" )
-        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{run.id}", verbose=0)
+        if not training_config["load_saved_model"]:
+            run = wandb.init(project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps" )
+        else:
+            run = wandb.init(id = run_id, project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps", resume="must")
+        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{project_name}", verbose=0)
         callbacks.append(wandb_callback)
-        model = model_class(config["policy_type"], env, policy_kwargs=policy_kwargs, verbose=2, tensorboard_log=f"runs/{run.id}", device=training_config["device"])
+        if not training_config["load_saved_model"]:
+            model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
     else:
-        model = model_class(config["policy_type"], env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
+        if not training_config["load_saved_model"]:
+            model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
 
+    
     # Train the model
-    model.learn(total_timesteps=config["total_timesteps"], callback=callbacks)
+    model.learn(total_timesteps=total_timesteps, callback=callbacks)
 
     print("Evaluating")
 
@@ -187,14 +223,13 @@ def simulate(**kwargs):
 
     save_data(schema, eval_env, simulation_id, simulation_output_path, timestamps, start_timestamp, 0, 'test')
     
-
 class SaveDataCallback(BaseCallback):
     """
     A custom callback that derives from ``BaseCallback``.
 
     :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
     """
-    def __init__(self, schema, env, simulation_id, simulation_output_path, timestamps, episodes, verbose=0):
+    def __init__(self, schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, project_name, verbose=0):
         super(SaveDataCallback, self).__init__(verbose)
         self.schema = schema
         self.env = env
@@ -205,6 +240,20 @@ class SaveDataCallback(BaseCallback):
         self.episode = 0
         self.start_timestamp = datetime.utcnow()
         self.mode = 'train'
+
+        self.save_freq = training_config['model_save_freq'] * env.unwrapped.time_steps
+        self.save_path = training_config["data_directory"] + "/models/"
+        self.name_prefix = project_name
+        self.save_replay_buffer = True
+        self.save_vecnormalize = True
+
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+
+
+    def _init_callback(self) -> None:
+        if self.save_path is None:
+            raise ValueError("You must specify `save_path` for saving the model.")
 
     def _on_step(self) -> bool:
         # print to log
@@ -226,6 +275,7 @@ class SaveDataCallback(BaseCallback):
                 self.episode, 
                 self.mode
             )
+            print("Logging data...")
             self.episode += 1
             self.start_timestamp = datetime.utcnow()
 
@@ -277,6 +327,33 @@ class SaveDataCallback(BaseCallback):
             # Log rewards, losses and KPI's to Wandb:
             if training_config["log_to_wandb"]:
                 wandb.log(log_data)
+
+        if self.n_calls % self.save_freq == 0:
+            model_path = os.path.join(self.save_path, f"{self.name_prefix}.zip")
+            self.model.save(model_path)
+
+            # Save the current training state including the episode count
+            state_path = os.path.join(self.save_path, f"{self.name_prefix}_state.pkl")
+            state = {
+                "num_timesteps": self.num_timesteps,
+                "n_calls": self.n_calls,
+                "episodes": self.episode,
+                "run_id" : wandb.run.id
+            }
+            with open(state_path, "wb") as file:
+                pickle.dump(state, file)
+
+            if self.save_replay_buffer and hasattr(self.model, "replay_buffer"):
+                replay_buffer_path = os.path.join(self.save_path, f"{self.name_prefix}_replay_buffer.pkl")
+                with open(replay_buffer_path, "wb") as file:
+                    pickle.dump(self.model.replay_buffer, file)
+
+            if self.save_vecnormalize and self.training_env is not None and hasattr(self.training_env, "save"):
+                vecnormalize_path = os.path.join(self.save_path, f"{self.name_prefix}_vecnormalize.pkl")
+                self.training_env.save(vecnormalize_path)
+
+            if self.verbose > 1:
+                print(f"Saving model checkpoint to {model_path}")
 
         else:
             pass
