@@ -107,8 +107,8 @@ def simulate(**kwargs):
 
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
                          net_arch=dict(pi=[training_config["neurons_per_layer"]] * training_config["n_layers"],
-                                       qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]))
-
+                                       qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]),
+                         n_critics=1)
     # Wandb testing
     episodes = env.unwrapped.schema['episodes']
     total_timesteps=(env.unwrapped.time_steps)*episodes
@@ -117,7 +117,8 @@ def simulate(**kwargs):
     if training_config["use_dhw_storage"] == False:
         project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
 
-    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, project_name, verbose = 2)
+    model_save_file_name = project_name + "_" + training_config["algorithm"]
+    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, model_save_file_name, verbose = 2)
 
     callbacks = [save_data_callback]
 
@@ -146,10 +147,10 @@ def simulate(**kwargs):
 
     if training_config["load_saved_model"]:
         save_path = training_config["data_directory"] + "/models/"
-        model_path = os.path.join(save_path, f"{project_name}")
-        replay_buffer_path = os.path.join(save_path, f"{project_name}_replay_buffer.pkl")
-        vecnormalize_path = os.path.join(save_path, f"{project_name}_vecnormalize.pkl")
-        state_path = os.path.join(save_path, f"{project_name}_state.pkl")
+        model_path = os.path.join(save_path, f"{model_save_file_name}")
+        replay_buffer_path = os.path.join(save_path, f"{model_save_file_name}_replay_buffer.pkl")
+        vecnormalize_path = os.path.join(save_path, f"{model_save_file_name}_vecnormalize.pkl")
+        state_path = os.path.join(save_path, f"{model_save_file_name}_state.pkl")
 
         model = model_class.load(model_path, env=env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
 
@@ -183,7 +184,7 @@ def simulate(**kwargs):
             run = wandb.init(project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps" )
         else:
             run = wandb.init(id = run_id, project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps", resume="must")
-        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{project_name}", verbose=0)
+        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{model_save_file_name}", verbose=0)
         callbacks.append(wandb_callback)
         if not training_config["load_saved_model"]:
             model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
@@ -229,7 +230,7 @@ class SaveDataCallback(BaseCallback):
 
     :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
     """
-    def __init__(self, schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, project_name, verbose=0):
+    def __init__(self, schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, model_save_file_name, verbose=0):
         super(SaveDataCallback, self).__init__(verbose)
         self.schema = schema
         self.env = env
@@ -243,7 +244,7 @@ class SaveDataCallback(BaseCallback):
 
         self.save_freq = training_config['model_save_freq'] * env.unwrapped.time_steps
         self.save_path = training_config["data_directory"] + "/models/"
-        self.name_prefix = project_name
+        self.name_prefix = model_save_file_name
         self.save_replay_buffer = True
         self.save_vecnormalize = True
 
