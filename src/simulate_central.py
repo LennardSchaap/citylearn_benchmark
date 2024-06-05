@@ -107,8 +107,9 @@ def simulate(**kwargs):
 
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
                          net_arch=dict(pi=[training_config["neurons_per_layer"]] * training_config["n_layers"],
-                                       qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]))
-
+                                       qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]),
+                         n_critics=1)
+    print(policy_kwargs)
     # Wandb testing
     episodes = env.unwrapped.schema['episodes']
     total_timesteps=(env.unwrapped.time_steps)*episodes
