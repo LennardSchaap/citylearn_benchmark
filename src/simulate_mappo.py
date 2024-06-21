@@ -48,12 +48,17 @@ warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-training_config = {
-    "log_to_wandb" : True,
-    "model" : "MAPPO",
-    "episodes" : 60,
-    "version" : "60_eps_custom_rew"
-}
+import json
+
+def load_config(file_name='training_config.json'):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(script_dir, file_name)
+
+    with open(file_path, 'r') as file:
+        config = json.load(file)
+    return config
+
+training_config = load_config()
 
 def make_train_env(all_args):
     def get_env_fn(rank):

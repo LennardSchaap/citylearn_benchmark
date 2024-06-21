@@ -4,6 +4,7 @@ import numpy as np
 from envs.env_core import EnvCore
 # from envs.CityLearn.citylearn.citylearn import CityLearnEnv
 from citylearn.citylearn import CityLearnEnv
+from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
 
 class ContinuousActionEnv(object):
     """
@@ -15,6 +16,8 @@ class ContinuousActionEnv(object):
         # self.env = CityLearnEnv("citylearn_challenge_2022_phase_1", central_agent=False)
         dataset = "/home/wortel/Documents/citylearn_benchmark/benchmark/data/neighborhoods/tx_travis_county_neighborhood_5/schema.json"
         self.env = CityLearnEnv(dataset, central_agent=False)
+        self.env = NormalizedObservationWrapper(self.env)
+
 
         self.num_agent = len(self.env.buildings)
 
