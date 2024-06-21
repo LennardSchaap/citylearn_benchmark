@@ -11,6 +11,9 @@ from runner.separated.base_runner import Runner
 
 import wandb
 
+import matplotlib.pyplot as plt
+from collections import deque
+
 def _t2n(x):
     return x.detach().cpu().numpy()
 
@@ -22,6 +25,20 @@ class EnvRunner(Runner):
         self.simulation_output_path = simulation_output_path
         self.timestamps = timestamps
         self.config = config
+        self.recent_actions = {agent_id: deque(maxlen=96) for agent_id in range(self.num_agents)}
+
+    def plot_recent_actions(self, episode):
+        plt.figure(figsize=(15, 5 * self.num_agents))
+        for agent_id in range(self.num_agents):
+            plt.subplot(self.num_agents, 1, agent_id + 1)
+            plt.plot(self.recent_actions[agent_id])
+            plt.title(f'Agent {agent_id} - Last 96 Actions (Episode {episode})')
+            plt.xlabel('Time step')
+            plt.ylabel('Action')
+        plt.tight_layout()
+        plt.savefig(f'actions_episode_{episode}.png')
+        plt.close()
+
     def run(self):
         self.warmup()
 
@@ -47,6 +64,10 @@ class EnvRunner(Runner):
 
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
+
+                # Update recent actions
+                for agent_id in range(self.num_agents):
+                    self.recent_actions[agent_id].append(actions[0][agent_id])
 
                 # if episode > 0:
                 #     print(rewards, step)
@@ -92,6 +113,7 @@ class EnvRunner(Runner):
             # save model
             if episode % self.save_interval == 0 or episode == episodes - 1:
                 self.save()
+                self.plot_recent_actions(episode)
 
             # log information
             end = time.time()
@@ -108,19 +130,6 @@ class EnvRunner(Runner):
                 )
             )
 
-            if self.env_name == "MPE":
-                for agent_id in range(self.num_agents):
-                    idv_rews = []
-                    for info in infos:
-                        if "individual_reward" in info[agent_id].keys():
-                            idv_rews.append(info[agent_id]["individual_reward"])
-                    train_infos[agent_id].update({"individual_rewards": np.mean(idv_rews)})
-                    train_infos[agent_id].update(
-                        {
-                            "average_episode_rewards": np.mean(self.buffer[agent_id].rewards)
-                            * self.episode_length
-                        }
-                    )
             self.log_train(train_infos, total_num_steps)
 
             # eval
@@ -332,100 +341,6 @@ class EnvRunner(Runner):
 
         self.log_train(eval_train_infos, total_num_steps)
 
-    @torch.no_grad()
-    def render(self):
-        all_frames = []
-        for episode in range(self.all_args.render_episodes):
-            episode_rewards = []
-            obs = self.envs.reset()
-            if self.all_args.save_gifs:
-                image = self.envs.render("rgb_array")[0][0]
-                all_frames.append(image)
-
-            rnn_states = np.zeros(
-                (
-                    self.n_rollout_threads,
-                    self.num_agents,
-                    self.recurrent_N,
-                    self.hidden_size,
-                ),
-                dtype=np.float32,
-            )
-            masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
-
-            for step in range(self.episode_length):
-                calc_start = time.time()
-
-                temp_actions_env = []
-                for agent_id in range(self.num_agents):
-                    if not self.use_centralized_V:
-                        share_obs = np.array(list(obs[:, agent_id]))
-                    self.trainer[agent_id].prep_rollout()
-                    action, rnn_state = self.trainer[agent_id].policy.act(
-                        np.array(list(obs[:, agent_id])),
-                        rnn_states[:, agent_id],
-                        masks[:, agent_id],
-                        deterministic=True,
-                    )
-
-                    action = action.detach().cpu().numpy()
-                    # rearrange action
-                    if self.envs.action_space[agent_id].__class__.__name__ == "MultiDiscrete":
-                        for i in range(self.envs.action_space[agent_id].shape):
-                            uc_action_env = np.eye(self.envs.action_space[agent_id].high[i] + 1)[action[:, i]]
-                            if i == 0:
-                                action_env = uc_action_env
-                            else:
-                                action_env = np.concatenate((action_env, uc_action_env), axis=1)
-                    elif self.envs.action_space[agent_id].__class__.__name__ == "Discrete":
-                        action_env = np.squeeze(np.eye(self.envs.action_space[agent_id].n)[action], 1)
-                    else:
-                        raise NotImplementedError
-
-                    temp_actions_env.append(action_env)
-                    rnn_states[:, agent_id] = _t2n(rnn_state)
-
-                # [envs, agents, dim]
-                actions_env = []
-                for i in range(self.n_rollout_threads):
-                    one_hot_action_env = []
-                    for temp_action_env in temp_actions_env:
-                        one_hot_action_env.append(temp_action_env[i])
-                    actions_env.append(one_hot_action_env)
-
-                # Obser reward and next obs
-                obs, rewards, dones, infos = self.envs.step(actions_env)
-                episode_rewards.append(rewards)
-
-                rnn_states[dones == True] = np.zeros(
-                    ((dones == True).sum(), self.recurrent_N, self.hidden_size),
-                    dtype=np.float32,
-                )
-                masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
-                masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
-
-                if self.all_args.save_gifs:
-                    image = self.envs.render("rgb_array")[0][0]
-                    all_frames.append(image)
-                    calc_end = time.time()
-                    elapsed = calc_end - calc_start
-                    if elapsed < self.all_args.ifi:
-                        time.sleep(self.all_args.ifi - elapsed)
-
-            episode_rewards = np.array(episode_rewards)
-            for agent_id in range(self.num_agents):
-                average_episode_rewards = np.mean(np.sum(episode_rewards[:, :, agent_id], axis=0))
-                print("eval average episode rewards of agent%i: " % agent_id + str(average_episode_rewards))
-
-        if self.all_args.save_gifs:
-            imageio.mimsave(
-                str(self.gif_dir) + "/render.gif",
-                all_frames,
-                duration=self.all_args.ifi,
-            )
-
-
-
 ########### DATA SAVE $$$$$$$$$$$$$$$$$$$
 
 
@@ -451,6 +366,7 @@ def save_and_log_data(schema, env, simulation_id, simulation_output_path, timest
     # TODO FIX:
 
     kpi_data = env.evaluate()
+    print(kpi_data.to_string())
 
     # Filter relevant KPI's: 
     electricity_consumption_district = kpi_data.loc[(kpi_data['cost_function'] == 'electricity_consumption') & (kpi_data['level'] == 'district'), 'value'].values[0]
