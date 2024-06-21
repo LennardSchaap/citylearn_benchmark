@@ -67,6 +67,7 @@ def set_sb3_work_order(**kwargs):
         command = f'python "{os.path.join(src_directory, "simulate.py")}" simulate "{schema_filepath}" {simulation_id} -b {b}'
         work_order.append(command)
 
+    print(work_order)
     # write work order and tacc job
     work_order.append('')
     work_order = '\n'.join(work_order)
