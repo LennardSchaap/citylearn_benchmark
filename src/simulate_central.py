@@ -19,9 +19,9 @@ from citylearn.agents.rbc import OptimizedRBC, BasicRBC
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.evaluation import evaluate_policy
 
-#MADDPG
-from maddpg.maddpg import MADDPG
-from maddpg.buffer import MultiAgentReplayBuffer
+# #MADDPG
+# from maddpg.maddpg import MADDPG
+# from maddpg.buffer import MultiAgentReplayBuffer
 
 #Frame-stack
 from stable_baselines3.common.vec_env import VecFrameStack
