@@ -117,16 +117,23 @@ def simulate(**kwargs):
     env = NormalizedObservationWrapper(env)
     env = StableBaselines3Wrapper(env)
 
-    policy_kwargs = dict(
-        activation_fn=th.nn.ReLU,
-        net_arch=dict(
-            pi=[training_config["neurons_per_layer"]] * training_config["n_layers"],
-            qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]
+    if training_config["no_buildings"] == 5 or training_config["no_buildings"] == 10:
+        policy_kwargs = {}
+        if training_config["algorithm"] != "PPO" and training_config["algorithm"] != "TD3":
+            policy_kwargs["n_critics"] = 1
+    else:
+        policy_kwargs = dict(
+            activation_fn=th.nn.ReLU,
+            net_arch=dict(
+                pi=[training_config["neurons_per_layer"]] * training_config["n_layers"],
+                qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]
+            )
         )
-    )
-    if training_config["algorithm"] != "PPO":
-        policy_kwargs["n_critics"] = 1
-        
+        if training_config["algorithm"] != "PPO":
+            policy_kwargs["n_critics"] = 1
+        if training_config["algorithm"] == "SAC":
+            policy_kwargs["use_sde"] = False
+
     # Wandb testing
     episodes = env.unwrapped.schema['episodes']
     total_timesteps=(env.unwrapped.time_steps)*episodes
@@ -194,7 +201,7 @@ def simulate(**kwargs):
             save_data_callback.num_timesteps = num_timesteps
             save_data_callback.n_calls = n_calls
             save_data_callback.episode = episodes
-            total_timesteps = total_timesteps - num_timesteps
+            total_timesteps = total_timesteps - env.unwrapped.time_steps * episodes
             print("Timesteps to go: ", total_timesteps)
         print("Loaded saved model.")
 
@@ -265,7 +272,6 @@ def simulate(**kwargs):
     filtered_kpis = kpis.loc[kpis.index.isin(rows_to_average), ['District']]
     avg = filtered_kpis['District'].mean()
     print(f"Average score: {avg:.2f}")
-    exit()
 
     save_data(schema, evaluation_env, simulation_id, simulation_output_path, timestamps, start_timestamp, 0, 'test')
 

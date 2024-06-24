@@ -22,7 +22,9 @@ training_config = load_config()
 def get_combined_data(key, folder):
     settings = get_settings()
     simulation_output_directory = settings['simulation_output_directory']
-    print(simulation_output_directory)
+
+    # simulation_output_directory = "/run/media/wortel/Elements SE/citylearn_data/"
+
     data_list = []
 
     if key == 'kpi':
