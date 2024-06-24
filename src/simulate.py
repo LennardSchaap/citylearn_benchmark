@@ -157,7 +157,7 @@ def simulate(**kwargs):
         model_class = TD3
 
     if training_config["log_to_wandb"]:
-        project_name ="sb3_independent_" + training_config["version"]
+        project_name ="sb3_independent_" + training_config["algorithm"]
         run = wandb.init(project=project_name, name=building_name, config=config, group=training_config["algorithm"])
         wandb_callback = WandbCallback(verbose=2)
         callbacks.append(wandb_callback)
