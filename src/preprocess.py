@@ -332,7 +332,7 @@ def get_settings():
     settings['src_directory'] = os.path.join(settings['root_directory'], 'src')
     settings['work_order_directory'] = os.path.join(settings['root_directory'], 'workflow', 'work_order')
     # settings['simulation_output_directory'] = os.path.join(settings['data_directory'], 'simulation_output')
-    settings['simulation_output_directory'] = os.path.join(settings['data_directory'], 'simulation_output/independent_PPO_50')
+    settings['simulation_output_directory'] = os.path.join(settings['data_directory'], 'simulation_output/independent_DDPG_50')
     settings['figures_directory'] = os.path.join(settings['root_directory'], 'figures')
     settings['schema_directory'] = os.path.join(settings['data_directory'], 'schemas')
     settings['neighborhood_directory'] = os.path.join(settings['data_directory'], 'neighborhoods')
