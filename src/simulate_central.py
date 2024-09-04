@@ -113,7 +113,7 @@ def simulate(**kwargs):
     schema['central_agent'] = True
 
     # set env and agents
-    env = CityLearnEnv(schema, central_agent=True)
+    env = CityLearnEnv(schema, central_agent=True, random_seed = training_config["seed"])
     env = NormalizedObservationWrapper(env)
     env = StableBaselines3Wrapper(env)
 
@@ -195,7 +195,9 @@ def simulate(**kwargs):
             num_timesteps = state["num_timesteps"]
             n_calls = state["n_calls"]
             episodes = state["episodes"]
-            run_id = state["run_id"]
+
+            if training_config["log_to_wandb"]:
+                run_id = state["run_id"]
 
             # Update the callback with the current episode count
             save_data_callback.num_timesteps = num_timesteps
@@ -213,11 +215,11 @@ def simulate(**kwargs):
         wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{model_save_file_name}", verbose=0)
         callbacks.append(wandb_callback)
         if not training_config["load_saved_model"]:
-            model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
+            model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"], seed = training_config["seed"])
     else:
         if not training_config["load_saved_model"]:
             if not training_config["algorithm"] == "RBC":
-                model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
+                model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"], seed = training_config["seed"])
             else:
                 print("Using RBC agent")
 
@@ -389,9 +391,12 @@ class SaveDataCallback(BaseCallback):
             state = {
                 "num_timesteps": self.num_timesteps,
                 "n_calls": self.n_calls,
-                "episodes": self.episode,
-                "run_id" : wandb.run.id
+                "episodes": self.episode
             }
+
+            if wandb.run is not None and wandb.run.id is not None:
+                state["run_id"] = wandb.run.id
+
             with open(state_path, "wb") as file:
                 pickle.dump(state, file)
 
