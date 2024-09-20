@@ -1,54 +1,39 @@
 import argparse
 import concurrent.futures
-from datetime import datetime
-import inspect
+import json
 import logging
 import os
-from pathlib import Path
-import shutil
-import subprocess
-from stable_baselines3.sac import SAC
-from stable_baselines3.ppo import PPO
-from stable_baselines3.td3 import TD3
-from stable_baselines3.ddpg import DDPG
-
-#RBC Baseline
-from citylearn.agents.rbc import OptimizedRBC, BasicRBC
-
-#RPPO
-from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.evaluation import evaluate_policy
-
-# #MADDPG
-# from maddpg.maddpg import MADDPG
-# from maddpg.buffer import MultiAgentReplayBuffer
-
-#Frame-stack
-from stable_baselines3.common.vec_env import VecFrameStack
-
-#Custom network
-import torch as th
-
-# Stable baselines 3 callbacks
-from stable_baselines3.common.callbacks import BaseCallback
 import pickle
-
 import sys
+import warnings
+from datetime import datetime
 from multiprocessing import cpu_count
+from pathlib import Path
+import inspect
+
+import gymnasium
 import numpy as np
 import pandas as pd
-from citylearn.citylearn import CityLearnEnv
-from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
-from citylearn.utilities import read_json
-from preprocess_central import get_settings, get_timestamps
+import torch as th
 import wandb
+# Independent training
+import subprocess
+import shutil
+from pathlib import Path
+
+from stable_baselines3 import PPO, SAC, TD3, DDPG
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv
+from sb3_contrib import RecurrentPPO
 from wandb.integration.sb3 import WandbCallback
 
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.monitor import Monitor
-import gymnasium
-
-import warnings
+from citylearn.agents.rbc import OptimizedRBC, BasicRBC
+from citylearn.citylearn import CityLearnEnv
+from citylearn.utilities import read_json
+from citylearn.wrappers import NormalizedObservationWrapper, StableBaselines3Wrapper
+from preprocess_central import get_settings, get_timestamps
 
 # Suppress Gymnasium warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
@@ -56,226 +41,369 @@ warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-def obs_list_to_state_vector(observation):
-    state = np.array([])
-    for obs in observation:
-        state = np.concatenate([state, obs])
-    return state
+class SimulationManager:
+    def __init__(self, agent_type = "central", **kwargs):
+        self.agent_type = agent_type.lower()
+        self.settings = get_settings()
+        self.timestamps = get_timestamps()
+        self.training_config = self.load_config()
+        self.kwargs = kwargs
+        self.schema = read_json(os.path.join(self.settings['schema_directory'], kwargs['schema']))
+        self.simulation_id = kwargs.get('simulation_id', f"{self.schema['simulation_id']}_seed_{self.training_config['seed']}")
+        self.simulation_output_path = os.path.join(self.settings['simulation_output_directory'], self.simulation_id)
+        self.project_name = f"sb3_{self.training_config['training_type']}_{self.training_config['no_buildings']}_buildings"
+        self.model_save_file_name = f"{self.project_name}_{self.training_config['algorithm']}_{self.training_config['seed']}"
+        self.model_save_path = os.path.join(self.training_config["data_directory"], "models")
 
-# Load json config
+        self.total_timesteps = None
+        self.data_saver = DataSaver(self.simulation_id, self.simulation_output_path, self.timestamps, self.training_config)
 
-import json
+        # For independent agents:
+        self.building_name = kwargs.get('building')
 
-def load_config(file_name='training_config.json'):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(script_dir, file_name)
+        os.makedirs(self.simulation_output_path, exist_ok=True)
+        self.initialize_schema()
+        self.set_logger()
 
-    with open(file_path, 'r') as file:
-        config = json.load(file)
-    return config
+    def load_config(self, file_name='training_config.json'):
+        file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
+        with open(file_path, 'r') as file:
+            return json.load(file)
 
-training_config = load_config()
+    def initialize_schema(self):
 
-def simulate(**kwargs):
+        self.schema['root_directory'] = os.path.split(Path(self.kwargs['schema']).absolute())[0]
+        self.schema['episodes'] = self.training_config['episodes']
+        self.schema['actions']['dhw_storage']['active'] = self.training_config["use_dhw_storage"]
+        self.schema['actions']['electrical_storage']['active'] = self.training_config["use_electrical_storage"]
 
-    settings = get_settings()
-    timestamps = get_timestamps()
-    schema = kwargs['schema']
-    schema = read_json(os.path.join(settings['schema_directory'], schema))
-    schema['root_directory'] = os.path.split(Path(kwargs['schema']).absolute())[0]
-    simulation_id = kwargs.get('simulation_id', schema['simulation_id'])
-
-    schema['episodes'] = training_config['episodes']
-    schema['actions']['dhw_storage']['active'] = training_config["use_dhw_storage"]
-    schema['actions']['electrical_storage']['active'] = training_config["use_electrical_storage"]
-
-    # set buildings
-    if kwargs.get('building', None) is not None:
-        for b in schema['buildings']:
-            if b == kwargs['building']:
-                schema['buildings'][b]['include'] = True
+        if self.agent_type == 'independent':
+            # Independent agents for each building, only include the specified building
+            if self.kwargs.get('building', None) is not None:
+                for b in self.schema['buildings']:
+                    self.schema['buildings'][b]['include'] = (b == self.kwargs['building'])
+                self.schema['central_agent'] = False
             else:
-                schema['buildings'][b]['include'] = False
-    else:
-        pass
-    
-    # set simulation output path
-    simulation_output_path = os.path.join(settings['simulation_output_directory'], simulation_id)
-    
-    if os.path.isdir(simulation_output_path):
-        print("Directory already exists!")
-    else:
-        pass
+                raise ValueError("Building name must be specified for independent agent training.")
+        else:
+            # Central agent setup
+            self.schema['central_agent'] = True
 
-    os.makedirs(simulation_output_path, exist_ok=True)
-    set_logger(simulation_id, simulation_output_path)
+    def set_logger(self):
+        log_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}.log')
+        handler = logging.FileHandler(log_filepath, mode='w')
+        formatter = logging.Formatter('%(asctime)s: %(message)s')
+        handler.setFormatter(formatter)
+        LOGGER.addHandler(handler)
 
-    schema['central_agent'] = True
+    def setup_environment(self):
+        env = CityLearnEnv(self.schema, central_agent=True, random_seed=self.training_config["seed"])
+        env = NormalizedObservationWrapper(env)
+        env = StableBaselines3Wrapper(env)
 
-    # set env and agents
-    env = CityLearnEnv(schema, central_agent=True, random_seed = training_config["seed"])
-    env = NormalizedObservationWrapper(env)
-    env = StableBaselines3Wrapper(env)
+        policy_kwargs = self.get_policy_kwargs()
+        return env, policy_kwargs
 
-    if training_config["no_buildings"] == 5 or training_config["no_buildings"] == 10:
-        policy_kwargs = {}
-        if training_config["algorithm"] != "PPO" and training_config["algorithm"] != "TD3":
+    def get_policy_kwargs(self):
+        if self.training_config["no_buildings"] in [5, 10]:
+            return {"n_critics": 1} if self.training_config["algorithm"] not in ["PPO", "TD3"] else {}
+        
+        policy_kwargs = {
+            "activation_fn": th.nn.ReLU,
+            "net_arch": {
+                "pi": [self.training_config["neurons_per_layer"]] * self.training_config["n_layers"],
+                "qf": [self.training_config["neurons_per_layer"]] * self.training_config["n_layers"]
+            }
+        }
+
+        if self.training_config["algorithm"] != "PPO":
             policy_kwargs["n_critics"] = 1
-    else:
-        policy_kwargs = dict(
-            activation_fn=th.nn.ReLU,
-            net_arch=dict(
-                pi=[training_config["neurons_per_layer"]] * training_config["n_layers"],
-                qf=[training_config["neurons_per_layer"]] * training_config["n_layers"]
-            )
-        )
-        if training_config["algorithm"] != "PPO":
-            policy_kwargs["n_critics"] = 1
-        if training_config["algorithm"] == "SAC":
+        if self.training_config["algorithm"] == "SAC":
             policy_kwargs["use_sde"] = False
+            
+        return policy_kwargs
 
-    # Wandb testing
-    episodes = env.unwrapped.schema['episodes']
-    total_timesteps=(env.unwrapped.time_steps)*episodes
+    def load_model(self, model_class, env, policy_kwargs):
+        model_path = os.path.join(self.model_save_path, f"{self.simulation_id}")
+        return model_class.load(model_path, env=env, policy_kwargs=policy_kwargs, verbose=2, device=self.training_config["device"])
+        
+    def setup_model(self, env, policy_kwargs, callbacks):
+        model_class = self.get_model_class()
+        if self.training_config["load_saved_model"]:
+            model = self.load_model(model_class, env, policy_kwargs)
+            self.load_model_data(model, env, callbacks)
+        else:
+            model = model_class(self.training_config["policy_type"], env, policy_kwargs=policy_kwargs, verbose=2, device=self.training_config["device"], seed=self.training_config["seed"])
+        if self.training_config["log_to_wandb"]:
+            self.setup_wandb_logging(callbacks)
+        return model
 
-    project_name = "sb3_central" + "_" + str(training_config["no_buildings"]) + "_buildings"
-    if training_config["use_dhw_storage"] == False:
-        project_name = "sb3_central" + "_" + training_config["buildings"] + "_no_dhw_storage"
+    def load_model_data(self, model, env, callbacks):
+        """
+        Loads additional data like replay buffer, VecNormalize, and training state,
+        and adjusts total timesteps based on restored state.
+        """
+        replay_buffer_path = os.path.join(self.model_save_path, f"{self.model_save_file_name}_replay_buffer.pkl")
+        vecnormalize_path = os.path.join(self.model_save_path, f"{self.model_save_file_name}_vecnormalize.pkl")
+        state_path = os.path.join(self.model_save_path, f"{self.model_save_file_name}_state.pkl")
 
-    model_save_file_name = project_name + "_" + training_config["algorithm"]
-    save_data_callback = SaveDataCallback(schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, model_save_file_name, verbose = 2)
-
-    callbacks = [save_data_callback]
-
-    policy_type = training_config["policy_type"]
-
-    if training_config["algorithm"] == "PPO":
-        model_class = PPO
-        if training_config["frame-stack-ppo"]:
-            env = make_train_env(env)
-            env = VecFrameStack(env, training_config["n_stack"])
-    elif training_config["algorithm"] == "SAC":
-        model_class = SAC
-    elif training_config["algorithm"] == "TD3":
-        model_class = TD3
-    elif training_config["algorithm"] == "DDPG":
-        model_class = DDPG
-    elif training_config["algorithm"] == "RPPO":
-        model_class = RecurrentPPO
-        policy_type = "MlpLstmPolicy"
-
-    # config = {
-    #     "policy_type": policy_type,
-    #     "total_timesteps": total_timesteps,
-    #     "env_name": "CityLearn",
-    # }
-
-    if training_config["load_saved_model"]:
-        save_path = training_config["data_directory"] + "/models/"
-        model_path = os.path.join(save_path, f"{model_save_file_name}")
-        replay_buffer_path = os.path.join(save_path, f"{model_save_file_name}_replay_buffer.pkl")
-        vecnormalize_path = os.path.join(save_path, f"{model_save_file_name}_vecnormalize.pkl")
-        state_path = os.path.join(save_path, f"{model_save_file_name}_state.pkl")
-
-        model = model_class.load(model_path, env=env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"])
-
-        # Load the replay buffer if applicable
-        if training_config["algorithm"] in ["PPO", "SAC", "TD3", "DDPG"] and os.path.exists(replay_buffer_path):
+        # Load replay buffer if applicable
+        if self.training_config["algorithm"] in ["PPO", "SAC", "TD3", "DDPG"] and os.path.exists(replay_buffer_path):
             with open(replay_buffer_path, "rb") as file:
                 model.replay_buffer = pickle.load(file)
 
-        # Load the VecNormalize statistics if applicable
+        # Load VecNormalize if available
         if os.path.exists(vecnormalize_path):
             env = VecNormalize.load(vecnormalize_path, env)
 
-        # Load the saved training state
+        # Load training state and update total timesteps
         if os.path.exists(state_path):
             with open(state_path, "rb") as file:
                 state = pickle.load(file)
-            num_timesteps = state["num_timesteps"]
-            n_calls = state["n_calls"]
-            episodes = state["episodes"]
+            self.restore_training_state(state, env, callbacks)
 
-            if training_config["log_to_wandb"]:
-                run_id = state["run_id"]
+    def restore_training_state(self, state, env, callbacks):
+        """
+        Restores the training state (timesteps, calls, episodes) and adjusts total timesteps.
+        """
 
-            # Update the callback with the current episode count
-            save_data_callback.num_timesteps = num_timesteps
-            save_data_callback.n_calls = n_calls
-            save_data_callback.episode = episodes
-            total_timesteps = total_timesteps - env.unwrapped.time_steps * episodes
-            print("Timesteps to go: ", total_timesteps)
-        print("Loaded saved model.")
+        num_timesteps = state["num_timesteps"]
+        n_calls = state["n_calls"]
+        episodes = state["episodes"]
 
-    if training_config["log_to_wandb"]:
-        if not training_config["load_saved_model"]:
-            run = wandb.init(project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps" )
+        print(self.total_timesteps)
+        # Adjust total timesteps to account for already completed episodes
+        self.total_timesteps -= (env.unwrapped.time_steps * episodes)
+
+        # Update callback state
+        callbacks[0].num_timesteps = num_timesteps
+        callbacks[0].n_calls = n_calls
+        callbacks[0].episode = episodes
+
+        print(f"Restored state: {episodes} episodes, {num_timesteps} timesteps, {n_calls} calls")
+        print(f"Timesteps remaining: {self.total_timesteps}")
+
+    def setup_wandb_logging(self, callbacks):
+        """
+        Initializes WandB logging.
+        """
+        if self.agent_type == 'independent':
+            run_name = self.building_name
         else:
-            run = wandb.init(id = run_id, project=project_name, config=training_config, name=training_config["algorithm"] + "_" + str(training_config["episodes"]) + "_eps", resume="must")
-        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{model_save_file_name}", verbose=0)
+            run_name = f"{self.training_config['algorithm']}_{self.training_config['episodes']}_eps"
+
+        if not self.training_config["load_saved_model"]:
+            run = wandb.init(
+                project=self.project_name, config=self.training_config,
+                name=run_name
+            )
+        else:
+            run = wandb.init(
+                id=run_id, project=self.project_name, config=self.training_config,
+                name=run_name, resume="must"
+            )
+
+        wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{self.model_save_file_name}", verbose=0)
         callbacks.append(wandb_callback)
-        if not training_config["load_saved_model"]:
-            model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"], seed = training_config["seed"])
-    else:
-        if not training_config["load_saved_model"]:
-            if not training_config["algorithm"] == "RBC":
-                model = model_class(policy_type, env, policy_kwargs=policy_kwargs, verbose=2, device=training_config["device"], seed = training_config["seed"])
-            else:
-                print("Using RBC agent")
 
-    if not training_config["algorithm"] == "RBC" or training_config["evaluate"]:
-        # Train the model
-        model.learn(total_timesteps=total_timesteps, callback=callbacks)
+    def get_model_class(self):
+        if self.training_config["algorithm"] == "PPO":
+            return PPO
+        elif self.training_config["algorithm"] == "SAC":
+            return SAC
+        elif self.training_config["algorithm"] == "TD3":
+            return TD3
+        elif self.training_config["algorithm"] == "DDPG":
+            return DDPG
 
-    print("Evaluating")
+    def setup_callbacks(self, env, simulation_output_path, total_timesteps):
+        save_data_callback = SaveDataCallback(self.data_saver, self.schema, env, self.simulation_id, simulation_output_path, self.timestamps, self.schema['episodes'], self.training_config, self.simulation_id, verbose=2)
+        callbacks = [save_data_callback]
 
-    # evaluate
-    season = schema['season']
-    schema['simulation_start_time_step'] = int(timestamps[
-        timestamps['timestamp']==settings['season_timestamps'][season]['test_start_timestamp']
-    ].iloc[0].name)
-    schema['simulation_end_time_step'] = int(timestamps[
-        timestamps['timestamp']==settings['season_timestamps'][season]['test_end_timestamp']
-    ].iloc[0].name)
+        if self.training_config["log_to_wandb"]:
+            run = wandb.init(project=self.project_name, config=self.training_config, name=self.training_config["algorithm"] + "_" + str(self.training_config["episodes"]) + "_eps")
+            wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{self.simulation_id}", verbose=0)
+            callbacks.append(wandb_callback)
+        
+        return callbacks
 
-    eval_env = CityLearnEnv(schema, central_agent=True)
-    eval_env = NormalizedObservationWrapper(eval_env)
-    eval_env = StableBaselines3Wrapper(eval_env)
-    observations = eval_env.reset()
-    start_timestamp = datetime.utcnow()
+    def evaluate_model(self, env, model):
+        eval_env = self.setup_eval_env()
+        observations = eval_env.reset()
+        start_timestamp = datetime.utcnow()
 
-    if not training_config["algorithm"] == "RBC":
-        vec_env = model.get_env()
-        obs = vec_env.reset()
+        if self.training_config["algorithm"] != "RBC":
+            vec_env = model.get_env()
+            obs = vec_env.reset()
 
-        while not eval_env.done:
-            actions, _ = model.predict(obs, deterministic=True)
-            obs, _, _, _= vec_env.step(actions)
-            eval_env.step(actions[0])
+            while not eval_env.done:
+                actions, _ = model.predict(obs, deterministic=True)
+                obs, _, _, _= vec_env.step(actions)
+                eval_env.step(actions[0])
+        else:
+            print("Using RBC agent")
+            eval_env = CityLearnEnv(self.schema, central_agent=True)
+            obs = eval_env.reset()[0]
+            model = OptimizedRBC(eval_env)
+            while not eval_env.done:
+                actions = model.predict(observations=obs, deterministic=True)
+                obs, rew, _, _, _= eval_env.step(actions)
 
-    else:
-        eval_env = CityLearnEnv(schema, central_agent=True)
-        obs = eval_env.reset()[0]
-        model = OptimizedRBC(eval_env)
-        while not eval_env.done:
-            actions = model.predict(observations=obs, deterministic=True)
-            obs, rew, _, _, _= eval_env.step(actions)
+        if self.training_config["algorithm"] != "RBC":
+            evaluation_env = vec_env.envs[0]
+        else:
+            evaluation_env = eval_env
 
-    if not training_config["algorithm"] == "RBC":
-        evaluation_env = vec_env.envs[0]
-    else:
-        evaluation_env = eval_env
+        kpis = evaluation_env.unwrapped.evaluate().pivot(index='cost_function', columns='name', values='value')
+        kpis = kpis.dropna(how='all')
+        print(kpis)
 
-    kpis = evaluation_env.unwrapped.evaluate().pivot(index='cost_function', columns='name', values='value')
-    kpis = kpis.dropna(how='all')
-    print(kpis)
+        rows_to_average = ['1 - load_factor', 'average_daily_peak', 'electricity_consumption', 'peak_demand', 'ramping']
+        filtered_kpis = kpis.loc[kpis.index.isin(rows_to_average), ['District']]
+        avg = filtered_kpis['District'].mean()
+        print(f"Average score: {avg:.2f}")
 
-    rows_to_average = ['1 - load_factor', 'average_daily_peak', 'electricity_consumption', 'peak_demand', 'ramping']
-    filtered_kpis = kpis.loc[kpis.index.isin(rows_to_average), ['District']]
-    avg = filtered_kpis['District'].mean()
-    print(f"Average score: {avg:.2f}")
+        self.data_saver.save_data(env, start_timestamp, 0, 'test')
 
-    save_data(schema, evaluation_env, simulation_id, simulation_output_path, timestamps, start_timestamp, 0, 'test')
+    def setup_eval_env(self):
+        eval_schema = self.schema.copy()
+        eval_schema['simulation_start_time_step'] = int(self.timestamps[self.timestamps['timestamp'] == self.settings['season_timestamps'][self.schema['season']]['test_start_timestamp']].iloc[0].name)
+        eval_schema['simulation_end_time_step'] = int(self.timestamps[self.timestamps['timestamp'] == self.settings['season_timestamps'][self.schema['season']]['test_end_timestamp']].iloc[0].name)
+        eval_env = CityLearnEnv(eval_schema, central_agent=True)
+        eval_env = NormalizedObservationWrapper(eval_env)
+        eval_env = StableBaselines3Wrapper(eval_env)
+        return eval_env
+
+    def simulate(self, **kwargs):
+        env, policy_kwargs = self.setup_environment()
+
+        self.total_timesteps = env.unwrapped.time_steps * self.training_config['episodes']
+        callbacks = self.setup_callbacks(env, self.simulation_output_path, self.total_timesteps)
+
+        # Model setup
+        model = self.setup_model(env, policy_kwargs, callbacks)
+
+        if self.training_config["algorithm"] != "RBC" or self.training_config["evaluate"]:
+            model.learn(total_timesteps=self.total_timesteps, callback=callbacks)
+        
+        print("Evaluating the model...")
+        self.evaluate_model(env, model)
+
+class DataSaver:
+    def __init__(self, simulation_id, simulation_output_path, timestamps, training_config):
+        self.simulation_id = simulation_id
+        self.simulation_output_path = simulation_output_path
+        self.timestamps = timestamps
+        self.training_config = training_config
+
+    def save_data(self, env, start_timestamp, episode, mode):
+        """
+        Save the simulation data such as environment summary, rewards, and KPIs.
+        """
+        end_timestamp = datetime.utcnow()
+        
+        # Save timer data
+        timer_data = pd.DataFrame([{
+            'simulation_id': self.simulation_id,
+            'mode': mode,
+            'episode': episode,
+            'start_timestamp': start_timestamp, 
+            'end_timestamp': end_timestamp
+        }])
+        timer_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-timer.csv')
+
+        if os.path.isfile(timer_filepath):
+            existing_data = pd.read_csv(timer_filepath)
+            timer_data = pd.concat([existing_data, timer_data], ignore_index=True, sort=False)
+            del existing_data
+        
+        timer_data.to_csv(timer_filepath, index=False)
+        del timer_data
+
+        # Save environment summary data
+        data_list = []
+        if self.training_config["save_env_data_during_training"] or mode == "test":
+            for i, b in enumerate(env.buildings):
+                env_data = pd.DataFrame({
+                    'solar_generation': b.solar_generation,
+                    'non_shiftable_load_demand': b.non_shiftable_load_demand,
+                    'dhw_demand': b.dhw_demand,
+                    'heating_demand': b.heating_demand,
+                    'cooling_demand': b.cooling_demand,
+                    'energy_from_electrical_storage': b.energy_from_electrical_storage,
+                    'energy_from_dhw_storage': b.energy_from_dhw_storage,
+                    'energy_from_dhw_device': b.energy_from_dhw_device,
+                    'energy_from_heating_device': b.energy_from_heating_device,
+                    'energy_from_cooling_device': b.energy_from_cooling_device,
+                    'energy_to_electrical_storage': b.energy_to_electrical_storage,
+                    'energy_from_dhw_device_to_dhw_storage': b.energy_from_dhw_device_to_dhw_storage,
+                    'electrical_storage_electricity_consumption': b.electrical_storage_electricity_consumption,
+                    'dhw_storage_electricity_consumption': b.dhw_storage_electricity_consumption,
+                    'dhw_electricity_consumption': b.dhw_electricity_consumption,
+                    'heating_electricity_consumption': b.heating_electricity_consumption,
+                    'cooling_electricity_consumption': b.cooling_electricity_consumption,
+                    'net_electricity_consumption': b.net_electricity_consumption,
+                    'net_electricity_consumption_without_storage': b.net_electricity_consumption_without_storage,
+                    'net_electricity_consumption_without_storage_and_pv': b.net_electricity_consumption_without_storage_and_pv,
+                    'electrical_storage_soc': np.array(b.electrical_storage.soc)/b.electrical_storage.capacity_history[0],
+                    'dhw_storage_soc': np.array(b.dhw_storage.soc)/b.dhw_storage.capacity,
+                })
+                env_data['timestamp'] = self.timestamps['timestamp'].iloc[
+                    env.unwrapped.schema['simulation_start_time_step']:
+                    env.unwrapped.schema['simulation_start_time_step'] + env.time_step + 1
+                ].tolist()
+                env_data['time_step'] = env_data.index
+                env_data['mode'] = mode
+                env_data['episode'] = episode
+                env_data['building_id'] = i
+                env_data['building_name'] = b.name
+                env_data['simulation_id'] = self.simulation_id
+                data_list.append(env_data)
+
+            env_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-environment.csv')
+
+            if os.path.isfile(env_filepath):
+                existing_data = pd.read_csv(env_filepath)
+                data_list = [existing_data] + data_list
+                del existing_data
+            
+            env_data = pd.concat(data_list, ignore_index=True, sort=False)
+            env_data.to_csv(env_filepath, index=False)
+            del data_list
+            del env_data
+
+        # Save reward data  
+        reward_data = pd.DataFrame(env.rewards, columns=['reward'])
+        reward_data['time_step'] = reward_data.index
+        reward_data['building_name'] = None
+        reward_data['mode'] = mode
+        reward_data['episode'] = episode
+        reward_data['simulation_id'] = self.simulation_id
+        reward_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-reward.csv')
+
+        if os.path.isfile(reward_filepath):
+            existing_data = pd.read_csv(reward_filepath)
+            reward_data = pd.concat([existing_data, reward_data], ignore_index=True, sort=False)
+            del existing_data
+        
+        reward_data.to_csv(reward_filepath, index=False)
+        del reward_data
+
+        # Save KPIs
+        kpi_data = env.unwrapped.evaluate()
+        kpi_data['mode'] = mode
+        kpi_data['episode'] = episode
+        kpi_data['simulation_id'] = self.simulation_id
+        kpi_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-kpi.csv')
+
+        if os.path.isfile(kpi_filepath):
+            existing_data = pd.read_csv(kpi_filepath)
+            kpi_data = pd.concat([existing_data, kpi_data], ignore_index=True, sort=False)
+            del existing_data
+
+        kpi_data.to_csv(kpi_filepath, index=False)
+        del kpi_data
+
 
 class SaveDataCallback(BaseCallback):
     """
@@ -283,7 +411,7 @@ class SaveDataCallback(BaseCallback):
 
     :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
     """
-    def __init__(self, schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, model_save_file_name, verbose=0):
+    def __init__(self, data_saver, schema, env, simulation_id, simulation_output_path, timestamps, episodes, training_config, model_save_file_name, agent_type="central", verbose=0):
         super(SaveDataCallback, self).__init__(verbose)
         self.schema = schema
         self.env = env
@@ -294,6 +422,7 @@ class SaveDataCallback(BaseCallback):
         self.episode = 0
         self.start_timestamp = datetime.utcnow()
         self.mode = 'train'
+        self.training_config = training_config
 
         self.save_freq = training_config['model_save_freq'] * env.unwrapped.time_steps
         self.save_path = training_config["data_directory"] + "/models/"
@@ -304,6 +433,11 @@ class SaveDataCallback(BaseCallback):
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
 
+        self.data_saver = data_saver
+
+        # For independent agents:
+        self.agent_type = agent_type
+        self.log_data_accumulator = []  
 
     def _init_callback(self) -> None:
         if self.save_path is None:
@@ -319,16 +453,7 @@ class SaveDataCallback(BaseCallback):
         # save timer data
         if self.env.unwrapped.time_step == self.env.unwrapped.time_steps - 2:
             print("Saving data...")
-            save_data(
-                self.schema, 
-                self.env, 
-                self.simulation_id, 
-                self.simulation_output_path, 
-                self.timestamps, 
-                self.start_timestamp, 
-                self.episode, 
-                self.mode
-            )
+            self.data_saver.save_data(self.env, self.start_timestamp, self.episode, self.mode)
             print("Logging data...")
             self.episode += 1
             self.start_timestamp = datetime.utcnow()
@@ -345,18 +470,18 @@ class SaveDataCallback(BaseCallback):
             peak_demand_values = kpi_data.loc[kpi_data['cost_function'] == 'peak_demand', 'value']
             load_factor_value = kpi_data.loc[kpi_data['cost_function'] == '1 - load_factor', 'value']
 
-            if training_config["algorithm"] == "PPO":
+            if self.training_config["algorithm"] == "PPO":
                 losses_dict = {
                     "loss": self.model.logger.name_to_value['train/loss'],
                     "policy_gradient_loss" : self.model.logger.name_to_value['train/policy_gradient_loss'],
                     "value_loss" : self.model.logger.name_to_value['train/value_loss']
                 }
-            elif training_config["algorithm"] in ["SAC", "TD3", "DDPG"]:
+            elif self.training_config["algorithm"] in ["SAC", "TD3", "DDPG"]:
                 losses_dict = {
                     "actor_loss": self.model.logger.name_to_value['train/actor_loss'],
                     "critic_loss": self.model.logger.name_to_value['train/critic_loss']
                 }
-            elif training_config["algorithm"] == "RPPO":
+            elif self.training_config["algorithm"] == "RPPO":
                 losses_dict = {
                     "policy_gradient_loss": self.model.logger.name_to_value['train/policy_gradient_loss'],
                     "value_loss": self.model.logger.name_to_value['train/value_loss']
@@ -378,11 +503,13 @@ class SaveDataCallback(BaseCallback):
 
             print(log_data)
 
-            # Log rewards, losses and KPI's to Wandb:
-            if training_config["log_to_wandb"]:
+            # Accumulate logs if agent is independent
+            if self.agent_type == 'independent':
+                self.log_data_accumulator.append(log_data)
+            else:
                 wandb.log(log_data)
 
-        if self.n_calls % self.save_freq == 0:
+        if self.agent_type == 'central' and self.n_calls % self.save_freq == 0:
             model_path = os.path.join(self.save_path, f"{self.name_prefix}.zip")
             self.model.save(model_path)
 
@@ -417,140 +544,28 @@ class SaveDataCallback(BaseCallback):
 
         return True
 
-def save_data(schema, env, simulation_id, simulation_output_path, timestamps, start_timestamp, episode, mode):
-    end_timestamp = datetime.utcnow()
-    timer_data = pd.DataFrame([{
-        'simulation_id': simulation_id,
-        'mode': mode,
-        'episode': episode,
-        'start_timestamp': start_timestamp, 
-        'end_timestamp': end_timestamp
-    }])
-    timer_filepath = os.path.join(simulation_output_path, f'{simulation_id}-timer.csv')
-
-    if os.path.isfile(timer_filepath):
-        existing_data = pd.read_csv(timer_filepath)
-        timer_data = pd.concat([existing_data, timer_data], ignore_index=True, sort=False)
-        del existing_data
-    else:
-        pass
-
-    timer_data.to_csv(timer_filepath, index=False)
-    del timer_data
-
-    # save environment summary data
-    data_list = []
-
-    if training_config["save_env_data_during_training"] or mode == "test":
-        for i, b in enumerate(env.buildings):
-            env_data = pd.DataFrame({
-                'solar_generation': b.solar_generation,
-                'non_shiftable_load_demand': b.non_shiftable_load_demand,
-                'dhw_demand': b.dhw_demand,
-                'heating_demand': b.heating_demand,
-                'cooling_demand': b.cooling_demand,
-                'energy_from_electrical_storage': b.energy_from_electrical_storage,
-                'energy_from_dhw_storage': b.energy_from_dhw_storage,
-                'energy_from_dhw_device': b.energy_from_dhw_device,
-                'energy_from_heating_device': b.energy_from_heating_device,
-                'energy_from_cooling_device': b.energy_from_cooling_device,
-                'energy_to_electrical_storage': b.energy_to_electrical_storage,
-                'energy_from_dhw_device_to_dhw_storage': b.energy_from_dhw_device_to_dhw_storage,
-                'electrical_storage_electricity_consumption': b.electrical_storage_electricity_consumption,
-                'dhw_storage_electricity_consumption': b.dhw_storage_electricity_consumption,
-                'dhw_electricity_consumption': b.dhw_electricity_consumption,
-                'heating_electricity_consumption': b.heating_electricity_consumption,
-                'cooling_electricity_consumption': b.cooling_electricity_consumption,
-                'net_electricity_consumption': b.net_electricity_consumption,
-                'net_electricity_consumption_without_storage': b.net_electricity_consumption_without_storage,
-                'net_electricity_consumption_without_storage_and_pv': b.net_electricity_consumption_without_storage_and_pv,
-                'electrical_storage_soc': np.array(b.electrical_storage.soc)/b.electrical_storage.capacity_history[0],
-                'dhw_storage_soc': np.array(b.dhw_storage.soc)/b.dhw_storage.capacity,
-            })
-            env_data['timestamp'] = timestamps['timestamp'].iloc[
-                schema['simulation_start_time_step']:
-                schema['simulation_start_time_step'] + env.time_step + 1
-            ].tolist()
-            env_data['time_step'] = env_data.index
-            env_data['mode'] = mode
-            env_data['episode'] = episode
-            env_data['building_id'] = i
-            env_data['building_name'] = b.name
-            env_data['simulation_id'] = simulation_id
-            data_list.append(env_data)
-        
-        env_filepath = os.path.join(simulation_output_path, f'{simulation_id}-environment.csv')
-
-        if os.path.isfile(env_filepath):
-            existing_data = pd.read_csv(env_filepath)
-            data_list = [existing_data] + data_list
-            del existing_data
-        else:
-            pass
-        
-        env_data = pd.concat(data_list, ignore_index=True, sort=False)
-        env_data.to_csv(env_filepath, index=False)
-        del data_list
-        del env_data
-
-    # save reward data  
-    reward_data = pd.DataFrame(env.rewards, columns=['reward'])
-    reward_data['time_step'] = reward_data.index
-    reward_data['building_name'] = None
-    reward_data['mode'] = mode
-    reward_data['episode'] = episode
-    reward_data['simulation_id'] = simulation_id
-    reward_filepath = os.path.join(simulation_output_path, f'{simulation_id}-reward.csv')
-
-    if os.path.isfile(reward_filepath):
-        existing_data = pd.read_csv(reward_filepath)
-        reward_data = pd.concat([existing_data, reward_data], ignore_index=True, sort=False)
-        del existing_data
-    else:
-        pass
-
-    reward_data.to_csv(reward_filepath, index=False)
-    del reward_data
-
-    # save KPIs
-    ## building level
-    kpi_data = env.unwrapped.evaluate()
-
-    kpi_data['mode'] = mode
-    kpi_data['episode'] = episode
-    kpi_data['simulation_id'] = simulation_id
-    kpi_filepath = os.path.join(simulation_output_path, f'{simulation_id}-kpi.csv')
-
-    if os.path.isfile(kpi_filepath):
-        existing_data = pd.read_csv(kpi_filepath)
-        kpi_data = pd.concat([existing_data, kpi_data], ignore_index=True, sort=False)
-        del existing_data
-    else:
-        pass
-
-    kpi_data.to_csv(kpi_filepath, index=False)
-    del kpi_data
-
-def set_logger(simulation_id, simulation_output_path):
-    os.makedirs(simulation_output_path, exist_ok=True)
-    log_filepath = os.path.join(simulation_output_path, f'{simulation_id}.log')
-
-    # set logger
-    handler = logging.FileHandler(log_filepath, mode='w')
-    formatter = logging.Formatter('%(asctime)s: %(message)s')
-    handler.setFormatter(formatter)
-    LOGGER.addHandler(handler)
+    def _on_training_end(self):
+        if self.agent_type == 'independent':
+            # Save the accumulated log data to a JSON file
+            output_file_path = os.path.join(self.simulation_output_path, f'{self.building_name}_wandb_data.json')
+            print(f"Saving accumulated log data to {output_file_path}")
+            with open(output_file_path, 'w') as json_file:
+                json.dump(self.log_data_accumulator, json_file, indent=4)
 
 def main():
     parser = argparse.ArgumentParser(prog='bs2023', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     subparsers = parser.add_subparsers(title='subcommands', required=True, dest='subcommands')
     
-    # simulate
+    # simulate central agent (simulate)
     subparser_simulate = subparsers.add_parser('simulate')
     subparser_simulate.add_argument('schema', type=str)
     subparser_simulate.add_argument('algorithm', type=str)
-    # subparser_simulate.add_argument('-b', '--building', dest='building', type=str)
-    subparser_simulate.set_defaults(func=simulate)
+    subparser_simulate.set_defaults(func=run_simulation)
+
+    # simulate independent agents (run_work_order)
+    subparser_run_work_order = subparsers.add_parser('run_work_order')
+    subparser_run_work_order.add_argument('work_order_filepath', type=Path)
+    subparser_run_work_order.set_defaults(func=run_work_order)
 
     args = parser.parse_args()
     arg_spec = inspect.getfullargspec(args.func)
@@ -559,5 +574,51 @@ def main():
     }
     args.func(**kwargs)
 
+def run_work_order(work_order_filepath, windows_system=None):
+    settings = get_settings()
+    work_order_filepath = Path(work_order_filepath)
+
+    virtual_environment_path = training_config["virtual_environment_path"]
+    conda_environment = training_config["conda_environment"]
+
+    if virtual_environment_path: 
+        if windows_system:
+            command = f'"{os.path.join(virtual_environment_path, "Scripts", "Activate.ps1")}"'
+        else:
+            command = f'source "{os.path.join(virtual_environment_path, "bin", "activate")}"'
+
+    elif conda_environment:
+        if windows_system:
+            command = f'cmd.exe /C "conda activate {conda_environment}"'
+        else:
+            command = f'eval "$(conda shell.bash hook)" && conda activate {conda_environment}'
+    else:
+        print("No environment found")
+
+    with open(work_order_filepath, mode='r') as f:
+        args = f.read()
+
+    args = args.strip('\n').split('\n')
+    args = [f'{command} && {a}' for a in args]
+
+    max_workers = settings.get('max_workers', None) or os.cpu_count()
+    # max_workers = min(settings.get('max_workers', None) or os.cpu_count(), training_config['cpu_count'])
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        print(f'Will use {max_workers} workers for job.')
+        print(f'Pooling {len(args)} jobs to run in parallel...')
+        results = [executor.submit(subprocess.run, **{'args': a, 'shell': True}) for a in args]
+
+        for future in concurrent.futures.as_completed(results):
+            try:
+                print(future.result())
+            except Exception as e:
+                print(e)
+
+def run_simulation(**kwargs):
+    sim_manager = SimulationManager(**kwargs)
+    # if sim_manager.training_config["training_type"] == "independent":
+    sim_manager.simulate()
+
 if __name__ == '__main__':
-    sys.exit(main())
+    main()
