@@ -200,7 +200,7 @@ class SimulationManager:
         if self.agent_type == 'independent':
             run_name = self.building_name
         else:
-            run_name = f"{self.training_config['algorithm']}_{self.training_config['episodes']}_eps"
+            run_name = f"{self.training_config['algorithm']}_{self.training_config['episodes']}_eps_seed_{self.training_config['seed']}"
 
         if not self.training_config["load_saved_model"]:
             run = wandb.init(
