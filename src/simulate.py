@@ -312,107 +312,123 @@ class DataSaver:
         """
         end_timestamp = datetime.utcnow()
         
-        # Save timer data
-        timer_data = pd.DataFrame([{
-            'simulation_id': self.simulation_id,
-            'mode': mode,
-            'episode': episode,
-            'start_timestamp': start_timestamp, 
-            'end_timestamp': end_timestamp
-        }])
-        timer_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-timer.csv')
+        print(f"[DEBUG] Saving data for simulation ID {self.simulation_id}, Episode: {episode}, Mode: {mode}")
 
-        if os.path.isfile(timer_filepath):
-            existing_data = pd.read_csv(timer_filepath)
-            timer_data = pd.concat([existing_data, timer_data], ignore_index=True, sort=False)
-            del existing_data
-        
-        timer_data.to_csv(timer_filepath, index=False)
-        del timer_data
+        # Save timer data
+        timer_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-timer.csv')
+        try:
+            timer_data = pd.DataFrame([{
+                'simulation_id': self.simulation_id,
+                'mode': mode,
+                'episode': episode,
+                'start_timestamp': start_timestamp, 
+                'end_timestamp': end_timestamp
+            }])
+            
+            if os.path.isfile(timer_filepath):
+                print(f"[DEBUG] Reading existing timer data from {timer_filepath}")
+                existing_data = pd.read_csv(timer_filepath)
+                timer_data = pd.concat([existing_data, timer_data], ignore_index=True, sort=False)
+            
+            timer_data.to_csv(timer_filepath, index=False)
+            print(f"[DEBUG] Timer data saved to {timer_filepath}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save timer data to {timer_filepath}: {e}")
 
         # Save environment summary data
-        data_list = []
-        if self.training_config["save_env_data_during_training"] or mode == "test":
-            for i, b in enumerate(env.buildings):
-                env_data = pd.DataFrame({
-                    'solar_generation': b.solar_generation,
-                    'non_shiftable_load_demand': b.non_shiftable_load_demand,
-                    'dhw_demand': b.dhw_demand,
-                    'heating_demand': b.heating_demand,
-                    'cooling_demand': b.cooling_demand,
-                    'energy_from_electrical_storage': b.energy_from_electrical_storage,
-                    'energy_from_dhw_storage': b.energy_from_dhw_storage,
-                    'energy_from_dhw_device': b.energy_from_dhw_device,
-                    'energy_from_heating_device': b.energy_from_heating_device,
-                    'energy_from_cooling_device': b.energy_from_cooling_device,
-                    'energy_to_electrical_storage': b.energy_to_electrical_storage,
-                    'energy_from_dhw_device_to_dhw_storage': b.energy_from_dhw_device_to_dhw_storage,
-                    'electrical_storage_electricity_consumption': b.electrical_storage_electricity_consumption,
-                    'dhw_storage_electricity_consumption': b.dhw_storage_electricity_consumption,
-                    'dhw_electricity_consumption': b.dhw_electricity_consumption,
-                    'heating_electricity_consumption': b.heating_electricity_consumption,
-                    'cooling_electricity_consumption': b.cooling_electricity_consumption,
-                    'net_electricity_consumption': b.net_electricity_consumption,
-                    'net_electricity_consumption_without_storage': b.net_electricity_consumption_without_storage,
-                    'net_electricity_consumption_without_storage_and_pv': b.net_electricity_consumption_without_storage_and_pv,
-                    'electrical_storage_soc': np.array(b.electrical_storage.soc)/b.electrical_storage.capacity_history[0],
-                    'dhw_storage_soc': np.array(b.dhw_storage.soc)/b.dhw_storage.capacity,
-                })
-                env_data['timestamp'] = self.timestamps['timestamp'].iloc[
-                    env.unwrapped.schema['simulation_start_time_step']:
-                    env.unwrapped.schema['simulation_start_time_step'] + env.time_step + 1
-                ].tolist()
-                env_data['time_step'] = env_data.index
-                env_data['mode'] = mode
-                env_data['episode'] = episode
-                env_data['building_id'] = i
-                env_data['building_name'] = b.name
-                env_data['simulation_id'] = self.simulation_id
-                data_list.append(env_data)
+        try:
+            data_list = []
+            if self.training_config["save_env_data_during_training"] or mode == "test":
+                for i, b in enumerate(env.buildings):
+                    print(f"[DEBUG] Collecting data for building {b.name}")
+                    env_data = pd.DataFrame({
+                        'solar_generation': b.solar_generation,
+                        'non_shiftable_load_demand': b.non_shiftable_load_demand,
+                        'dhw_demand': b.dhw_demand,
+                        'heating_demand': b.heating_demand,
+                        'cooling_demand': b.cooling_demand,
+                        'energy_from_electrical_storage': b.energy_from_electrical_storage,
+                        'energy_from_dhw_storage': b.energy_from_dhw_storage,
+                        'energy_from_dhw_device': b.energy_from_dhw_device,
+                        'energy_from_heating_device': b.energy_from_heating_device,
+                        'energy_from_cooling_device': b.energy_from_cooling_device,
+                        'energy_to_electrical_storage': b.energy_to_electrical_storage,
+                        'energy_from_dhw_device_to_dhw_storage': b.energy_from_dhw_device_to_dhw_storage,
+                        'electrical_storage_electricity_consumption': b.electrical_storage_electricity_consumption,
+                        'dhw_storage_electricity_consumption': b.dhw_storage_electricity_consumption,
+                        'dhw_electricity_consumption': b.dhw_electricity_consumption,
+                        'heating_electricity_consumption': b.heating_electricity_consumption,
+                        'cooling_electricity_consumption': b.cooling_electricity_consumption,
+                        'net_electricity_consumption': b.net_electricity_consumption,
+                        'net_electricity_consumption_without_storage': b.net_electricity_consumption_without_storage,
+                        'net_electricity_consumption_without_storage_and_pv': b.net_electricity_consumption_without_storage_and_pv,
+                        'electrical_storage_soc': np.array(b.electrical_storage.soc)/b.electrical_storage.capacity_history[0],
+                        'dhw_storage_soc': np.array(b.dhw_storage.soc)/b.dhw_storage.capacity,
+                    })
+                    env_data['timestamp'] = self.timestamps['timestamp'].iloc[
+                        env.unwrapped.schema['simulation_start_time_step']:
+                        env.unwrapped.schema['simulation_start_time_step'] + env.time_step + 1
+                    ].tolist()
+                    env_data['time_step'] = env_data.index
+                    env_data['mode'] = mode
+                    env_data['episode'] = episode
+                    env_data['building_id'] = i
+                    env_data['building_name'] = b.name
+                    env_data['simulation_id'] = self.simulation_id
+                    data_list.append(env_data)
 
-            env_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-environment.csv')
+                env_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-environment.csv')
 
-            if os.path.isfile(env_filepath):
-                existing_data = pd.read_csv(env_filepath)
-                data_list = [existing_data] + data_list
-                del existing_data
-            
-            env_data = pd.concat(data_list, ignore_index=True, sort=False)
-            env_data.to_csv(env_filepath, index=False)
-            del data_list
-            del env_data
+                if os.path.isfile(env_filepath):
+                    print(f"[DEBUG] Reading existing environment data from {env_filepath}")
+                    existing_data = pd.read_csv(env_filepath)
+                    data_list = [existing_data] + data_list
+                
+                env_data = pd.concat(data_list, ignore_index=True, sort=False)
+                env_data.to_csv(env_filepath, index=False)
+                print(f"[DEBUG] Environment data saved to {env_filepath}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save environment data: {e}")
 
         # Save reward data  
-        reward_data = pd.DataFrame(env.rewards, columns=['reward'])
-        reward_data['time_step'] = reward_data.index
-        reward_data['building_name'] = None
-        reward_data['mode'] = mode
-        reward_data['episode'] = episode
-        reward_data['simulation_id'] = self.simulation_id
         reward_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-reward.csv')
+        try:
+            print(f"[DEBUG] Saving reward data to {reward_filepath}")
+            reward_data = pd.DataFrame(env.rewards, columns=['reward'])
+            reward_data['time_step'] = reward_data.index
+            reward_data['building_name'] = None
+            reward_data['mode'] = mode
+            reward_data['episode'] = episode
+            reward_data['simulation_id'] = self.simulation_id
 
-        if os.path.isfile(reward_filepath):
-            existing_data = pd.read_csv(reward_filepath)
-            reward_data = pd.concat([existing_data, reward_data], ignore_index=True, sort=False)
-            del existing_data
-        
-        reward_data.to_csv(reward_filepath, index=False)
-        del reward_data
+            if os.path.isfile(reward_filepath):
+                print(f"[DEBUG] Reading existing reward data from {reward_filepath}")
+                existing_data = pd.read_csv(reward_filepath)
+                reward_data = pd.concat([existing_data, reward_data], ignore_index=True, sort=False)
+
+            reward_data.to_csv(reward_filepath, index=False)
+            print(f"[DEBUG] Reward data saved to {reward_filepath}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save reward data: {e}")
 
         # Save KPIs
-        kpi_data = env.unwrapped.evaluate()
-        kpi_data['mode'] = mode
-        kpi_data['episode'] = episode
-        kpi_data['simulation_id'] = self.simulation_id
         kpi_filepath = os.path.join(self.simulation_output_path, f'{self.simulation_id}-kpi.csv')
+        try:
+            print(f"[DEBUG] Saving KPI data to {kpi_filepath}")
+            kpi_data = env.unwrapped.evaluate()
+            kpi_data['mode'] = mode
+            kpi_data['episode'] = episode
+            kpi_data['simulation_id'] = self.simulation_id
 
-        if os.path.isfile(kpi_filepath):
-            existing_data = pd.read_csv(kpi_filepath)
-            kpi_data = pd.concat([existing_data, kpi_data], ignore_index=True, sort=False)
-            del existing_data
+            if os.path.isfile(kpi_filepath):
+                print(f"[DEBUG] Reading existing KPI data from {kpi_filepath}")
+                existing_data = pd.read_csv(kpi_filepath)
+                kpi_data = pd.concat([existing_data, kpi_data], ignore_index=True, sort=False)
 
-        kpi_data.to_csv(kpi_filepath, index=False)
-        del kpi_data
+            kpi_data.to_csv(kpi_filepath, index=False)
+            print(f"[DEBUG] KPI data saved to {kpi_filepath}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save KPI data: {e}")
 
 class SaveDataCallback(BaseCallback):
     """
