@@ -115,8 +115,8 @@ class SimulationManager:
         return env, policy_kwargs
 
     def get_policy_kwargs(self):
-        if self.training_config["no_buildings"] in [5, 10]:
-            return {"n_critics": 1} if self.training_config["algorithm"] not in ["PPO", "TD3"] else {}
+        # if self.training_config["no_buildings"] in [5, 10]:
+        #     return {"n_critics": 1} if self.training_config["algorithm"] not in ["PPO", "TD3"] else {}
         
         policy_kwargs = {
             "activation_fn": th.nn.ReLU,
@@ -227,14 +227,28 @@ class SimulationManager:
             return DDPG
 
     def setup_callbacks(self, env, simulation_output_path, total_timesteps):
+
+        # Initialize callbacks list
         save_data_callback = SaveDataCallback(self.data_saver, self.schema, env, self.simulation_id, simulation_output_path, self.timestamps, self.schema['episodes'], self.training_config, self.simulation_id, self.agent_type, self.building_name, verbose=2)
         callbacks = [save_data_callback]
 
+        # Check if WandB logging is enabled in the training config
         if self.training_config["log_to_wandb"]:
-            run = wandb.init(project=self.project_name, config=self.training_config, name=self.training_config["algorithm"] + "_" + str(self.training_config["episodes"]) + "_eps")
-            wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{self.simulation_id}", verbose=0)
+            # Define run name based on agent type
+            run_name = self.building_name if self.agent_type == 'independent' else f"{self.training_config['algorithm']}_{self.training_config['episodes']}_eps_seed_{self.training_config['seed']}"
+
+            # Initialize WandB and resume if a saved model is being loaded
+            run = wandb.init(
+                project=self.project_name, 
+                config=self.training_config,
+                name=run_name, 
+                resume="must" if self.training_config["load_saved_model"] else None
+            )
+
+            # Create WandB callback and add it to the callbacks list
+            wandb_callback = WandbCallback(gradient_save_freq=100, model_save_path=f"models/{self.model_save_file_name}", verbose=0)
             callbacks.append(wandb_callback)
-        
+
         return callbacks
 
     def evaluate_model(self, env, model):
