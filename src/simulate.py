@@ -198,7 +198,7 @@ class SimulationManager:
         Initializes WandB logging.
         """
         if self.agent_type == 'independent':
-            run_name = self.building_name
+            run_name = f"{self.building_name}_seed_{self.training_config['seed']}"
         else:
             run_name = f"{self.training_config['algorithm']}_{self.training_config['episodes']}_eps_seed_{self.training_config['seed']}"
 
