@@ -24,18 +24,24 @@ def get_combined_data(key, folder):
     simulation_output_directory = settings['simulation_output_directory']
 
     # simulation_output_directory = "/run/media/wortel/Elements SE/citylearn_data/"
+    simulation_output_directory = settings['simulation_output_directory'] + "/nieuwe_experimenten_alice/central_agent/5_buildings/DDPG/"
 
     data_list = []
+
+    print(folder)
 
     if key == 'kpi':
         # environment
         for d in os.listdir(simulation_output_directory):
+            print(d)
             if folder in d:
+                print("FOLDER: ", folder)
                 simulation_id = d
                 d = os.path.join(simulation_output_directory, d)
+                print(d)
                 data = pd.read_csv(os.path.join(d, f'{simulation_id}-{key}.csv'))
                 # print(data)
-                data['neighborhood'] = data['simulation_id'].str.split('_', expand=True)[0]
+                data['neighborhood'] = data['simulation_id'].str.split('_', expand=True)[2]
                 # print(data['neighborhood'])
                 # print(data['simulation_id'])
                 data['resstock_bldg_id'] = data['name'].str.split('-', expand=True)[5]
@@ -44,7 +50,7 @@ def get_combined_data(key, folder):
                 data['level'] = data['name'].map(lambda x: 'district' if x == 'District' else 'building')
                 
                 # print(data['resstock_bldg_id'])
-                data.loc[data['mode']=='test', 'episode'] = data['episode'].max() + 1
+                # data.loc[data['mode']=='test', 'episode'] = data['episode'].max() + 1
 
                 if 'timestamp' in data.columns:
                     data['timestamp'] = pd.to_datetime(data['timestamp'])
@@ -67,7 +73,7 @@ def get_combined_data(key, folder):
                 d = os.path.join(simulation_output_directory, d)
                 data = pd.read_csv(os.path.join(d, f'{simulation_id}-{key}.csv'))
                 # print(data)
-                data['neighborhood'] = data['simulation_id'].str.split('_', expand=True)[0]
+                data['neighborhood'] = data['simulation_id'].str.split('_', expand=True)[2]
                 # print(data['neighborhood'])
                 # print(data['simulation_id'])
                 # print(data['building_name'])
