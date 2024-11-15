@@ -24,7 +24,7 @@ def get_combined_data(key, folder):
     simulation_output_directory = settings['simulation_output_directory']
 
     # simulation_output_directory = "/run/media/wortel/Elements SE/citylearn_data/"
-    simulation_output_directory = settings['simulation_output_directory'] + "/nieuwe_experimenten_alice/central_agent/5_buildings/DDPG/"
+    simulation_output_directory = settings['simulation_output_directory'] + "/nieuwe_experimenten_alice/central_agent/5_buildings/SAC/"
 
     data_list = []
 
