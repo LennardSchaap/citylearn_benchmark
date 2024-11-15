@@ -44,17 +44,16 @@ warnings.filterwarnings("ignore", category=UserWarning, module="gymnasium")
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-def load_config(file_name='training_config.json'):
-    file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
+def load_config(file_path):
     with open(file_path, 'r') as file:
         return json.load(file)
 
 class SimulationManager:
-    def __init__(self, agent_type, **kwargs):
+    def __init__(self, agent_type, training_config_path, **kwargs):
         self.agent_type = agent_type.lower()
         self.settings = get_settings()
         self.timestamps = get_timestamps()
-        self.training_config = load_config()
+        self.training_config = load_config(training_config_path)
         self.kwargs = kwargs
         self.schema = read_json(os.path.join(self.settings['schema_directory'], kwargs['schema']))
 
@@ -600,6 +599,7 @@ def main():
     # simulate central agent (simulate)
     subparser_simulate = subparsers.add_parser('simulate', help="Run simulation for central or independent agents")
     subparser_simulate.add_argument('schema', type=str, help="Path to the schema JSON file.")
+    subparser_simulate.add_argument("training_config_path", type=Path)
     
     # Optional simulation_id argument for independent agents
     subparser_simulate.add_argument('simulation_id', nargs='?', type=str, help="Simulation ID for independent agent or algorithm for central agent.")
@@ -612,6 +612,7 @@ def main():
     # simulate independent agents (run_work_order)
     subparser_run_work_order = subparsers.add_parser('run_work_order')
     subparser_run_work_order.add_argument('work_order_filepath', type=Path)
+    subparser_run_work_order.add_argument("training_config_path", type=Path)
     subparser_run_work_order.set_defaults(func=run_work_order)
 
     args = parser.parse_args()
@@ -621,11 +622,11 @@ def main():
     }
     args.func(**kwargs)
 
-def run_work_order(work_order_filepath, windows_system=None):
+def run_work_order(work_order_filepath, training_config_path, windows_system=None):
     settings = get_settings()
     work_order_filepath = Path(work_order_filepath)
 
-    training_config = load_config() 
+    training_config = load_config(training_config_path)
     virtual_environment_path = training_config["virtual_environment_path"]
     conda_environment = training_config["conda_environment"]
 
@@ -663,11 +664,12 @@ def run_work_order(work_order_filepath, windows_system=None):
             except Exception as e:
                 print(e)
 
-def run_simulation(**kwargs):
+def run_simulation(training_config_path):
+
     if 'building' in kwargs and kwargs['building'] is not None:
-        sim_manager = SimulationManager("independent", **kwargs)
+        sim_manager = SimulationManager("independent", training_config_path, **kwargs)
     else:
-        sim_manager = SimulationManager("central", **kwargs)
+        sim_manager = SimulationManager("central", training_config_path, **kwargs)
 
     sim_manager.simulate()
 
