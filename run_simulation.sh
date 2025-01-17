@@ -8,6 +8,10 @@ BUILDINGS=$(jq -r '.no_buildings' "$CONFIG_FILE")
 SCHEMA_FILE="${DATA_DIR}/neighborhoods/tx_travis_county_neighborhood_${BUILDINGS}/schema.json"
 
 # Preprocessing and simulation
+
+sh workflow/preprocess.sh
+echo "Preprocessed data."
+
 if [ "$TRAINING_TYPE" = "independent" ]; then
     echo "Using work order file at: $WORK_ORDER_FILE"
 

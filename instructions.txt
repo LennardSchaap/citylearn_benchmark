@@ -1,5 +1,0 @@
-Instructions for using a central agent:
-
-1) Set up the experiment by providing the hyperparameters in src/training_config.json
-2) Preprocess the data with : "sh workflow/preprocess.sh"
-3) Start training with: "sh simulate.sh"

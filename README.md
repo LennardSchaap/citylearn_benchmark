@@ -1,33 +1,47 @@
-# A framework for the design of representative neighborhoods for energy flexibility assessment in CityLearn
-This source code in the directory is used to reproduce the results in the `A framework for the design of representative neighborhoods for energy flexibility assessment in CityLearn` paper.
+This code uses the source code of `A framework for the design of representative neighborhoods for energy flexibility assessment in CityLearn` paper as a basis to generate CityLearn environments of different scale. These environments are used as a basis for benchmarking RL algorithms in environments of increasing complexity, allowing the comparison of single-agent and multi-agent algorithms across different district sizes. See my thesis: "Benchmarking Reinforcement Learning Algorithms for Demand Response in Urban Energy Systems " https://theses.liacs.nl/pdf/2023-2024-SchaapLLennard.pdf"
 
 ## Installation
 First, clone this repository as:
-```bash
-git clone https://github.com/intelligent-environments-lab/DOE_XStock.git
-```
 
-Then navigate to this directory in the repository:
 ```bash
-cd DOE_XStock/citylearn_simulation
+git clone https://github.com/LennardSchaap/citylearn-rl-benchmark
 ```
-
-Install the dependencies in [requirements.txt](requirements.txt):
+Install the dependencies in [requirements.txt](requirements.txt), using Python 3.8:
 ```bash
 pip install -r requirements.txt
 ```
 
-It is important that the specified `stable-baseline3` version or earlier is used to avoid issues with `stable-baseline3` stopping support for `gym` environments, which the `CityLearn` version used in this work is.
-
 ## Running simulations
-Run the [workflow](workflow/preprocess.sh) to generate the simulation input dataset:
-```bash
-sh workflow/preprocess.sh
-```
 
-Finally, execute the [simulate.sh](workflow/simulate.sh) workflow that runs the CityLearn simulations for the three neighborhoods:
+Set the parameters of the run in src/training_config.json:
+
+For example:
+
+"training_type" : "central",
+"log_to_wandb" : false,
+"no_buildings" : 50,
+"algorithm" : "DDPG",
+"policy_type" : "MlpPolicy",
+"seed" : 42,
+"episodes" : 600,
+"n_layers" : 3,
+"neurons_per_layer" : 1024,
+"frame-stack-ppo" : false,
+"n_stack" : 4,
+"device" : "cuda",
+"use_dhw_storage" : true,
+"use_electrical_storage" : true,
+"model_save_freq" : 1,
+"load_saved_model" : false,
+"evaluate" : true,
+"save_env_data_during_training" : false,
+"data_directory" : "/.../citylearn-rl-benchmark/data",
+"conda_environment" : "",
+"virtual_environment_path" : "/.../citylearn-rl-benchmark/env"
+
+Run the bash script
 ```bash
-sh workflow/simulate.sh
+sh run_simulation.sh
 ```
 
 ## Results
@@ -37,21 +51,7 @@ The results of the simulation are stored in `data/simulation_output` that is aut
 3. `building_id-reward.csv`: Time series of reward during training episodes and final evaluation.
 4. `building_id-timer.csv`: Time it took for each episode to complete during training episodes and final evaluation.
 
-The notebooks in the [analysis](analysis) directory reference these results to generate the figures and statistics reported in the paper.
+The notebooks in the [analysis](analysis) directory can be used to produce the figures of the paper.
 
-## Citation
-```bibtex
-@inproceedings{nweyeFrameworkDesignRepresentative2023,
-	address = {Shanghai, China},
-	series = {Building simulation},
-	title = {A framework for the design of representative neighborhoods for energy flexibility assessment in {CityLearn}},
-	url = {https://bs2023.org/publication},
-	booktitle = {Proceedings of building simulation 2023: 18th conference of {IBPSA}},
-	publisher = {IBPSA},
-	author = {Nweye, Kingsley and Kaspar, Kathryn and Buscemi, Giacomo and Pinto, Giuseppe and Li, Han and Hong, Tianzhen and Ouf, Mohamed and Capozzoli, Alfonso and Nagy, Zoltan},
-	month = sep,
-	year = {2023},
-}
-```
 
 
