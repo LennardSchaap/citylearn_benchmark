@@ -664,7 +664,7 @@ def run_work_order(work_order_filepath, training_config_path, windows_system=Non
             except Exception as e:
                 print(e)
 
-def run_simulation(training_config_path):
+def run_simulation(training_config_path, **kwargs):
 
     if 'building' in kwargs and kwargs['building'] is not None:
         sim_manager = SimulationManager("independent", training_config_path, **kwargs)

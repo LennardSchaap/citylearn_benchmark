@@ -1,0 +1,23 @@
+{
+  "training_type": "central",
+  "log_to_wandb": true,
+  "no_buildings": 10,
+  "algorithm": "SAC",
+  "policy_type": "MlpPolicy",
+  "seed": 123,
+  "episodes": 600,
+  "n_layers": 3,
+  "neurons_per_layer": 1024,
+  "frame-stack-ppo": false,
+  "n_stack": 4,
+  "device": "auto",
+  "use_dhw_storage": true,
+  "use_electrical_storage": true,
+  "model_save_freq": 1,
+  "load_saved_model": false,
+  "evaluate": false,
+  "save_env_data_during_training": false,
+  "data_directory": "/home/s1914839/data1/data",
+  "conda_environment": "benv",
+  "virtual_environment_path": ""
+}
