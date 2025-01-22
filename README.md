@@ -6,6 +6,11 @@ First, clone this repository as:
 ```bash
 git clone --recurse-submodules https://github.com/LennardSchaap/citylearn-rl-benchmark
 ```
+Make a new virtual environment with Python3.9
+```bash
+python3.9 -m venv env
+source env/bin/activate
+```
 Install the dependencies in [requirements.txt](requirements.txt), using Python 3.8:
 ```bash
 pip install -r requirements.txt
