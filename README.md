@@ -22,7 +22,7 @@ pip install -r requirements.txt
 Set the parameters of the run in src/training_config.json:
 
 For example:
-
+```json
 "training_type" : "central",
 "log_to_wandb" : false,
 "no_buildings" : 50,
@@ -44,7 +44,7 @@ For example:
 "data_directory" : "/.../citylearn-rl-benchmark/data",
 "conda_environment" : "",
 "virtual_environment_path" : "/.../citylearn-rl-benchmark/env"
-
+```
 Run the bash script
 ```bash
 sh run_simulation.sh
