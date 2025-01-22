@@ -1,0 +1,4 @@
+[submodule "CityLearn-v1.8.0-gymnasium"]
+	path = CityLearn-v1.8.0-gymnasium
+	url = git@github.com:LennardSchaap/CityLearn-v1.8.0-gymnasium.git
+	branch = v1.8.0-gymnasium

@@ -20,7 +20,8 @@ cachetools==5.3.3
 certifi==2024.2.2
 cffi==1.16.0
 charset-normalizer==3.3.2
-CityLearn @ file:///home/wortel/Documents/citylearn_benchmark/citylearn-v1.8.0-gymnasium
+# CityLearn @ file:///home/wortel/Documents/citylearn_benchmark/citylearn-v1.8.0-gymnasium
+-e ./CityLearn-v1.8.0-gymnasium
 click==8.1.7
 cloudpickle==3.0.0
 comm==0.2.1
