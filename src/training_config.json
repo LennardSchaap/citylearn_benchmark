@@ -17,7 +17,7 @@
     "load_saved_model" : false,
     "evaluate" : true,
     "save_env_data_during_training" : false,
-    "data_directory" : "/home/wortel/Documents/citylearn-rl-benchmark/data",
+    "data_directory" : "/home/lennardschaap/Documents/citylearn-rl-benchmark/data",
     "conda_environment" : "",
-    "virtual_environment_path" : "/home/wortel/Documents/citylearn-rl-benchmark/env"
+    "virtual_environment_path" : "/home/lennardschaap/Documents/citylearn-rl-benchmark/env"
 }
