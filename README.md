@@ -4,7 +4,7 @@ This code uses the source code of `A framework for the design of representative 
 First, clone this repository as:
 
 ```bash
-git clone https://github.com/LennardSchaap/citylearn-rl-benchmark
+git clone --recurse-submodules https://github.com/LennardSchaap/citylearn-rl-benchmark
 ```
 Install the dependencies in [requirements.txt](requirements.txt), using Python 3.8:
 ```bash
